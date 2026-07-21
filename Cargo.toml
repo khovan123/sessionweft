@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "crates/sessionweft-core",
+  "crates/sessionweft-orchestration",
   "crates/sessionweft-storage",
   "crates/sessionweft-provider",
   "crates/sessionweft-runtime",
