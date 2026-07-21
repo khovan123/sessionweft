@@ -6,7 +6,7 @@ SessionWeft is a session-first, provider-agnostic runtime for coordinating AI ag
 
 ## Status
 
-The project is currently in **Phase -1: Capability Matrix**. Product implementation must not begin until the research, architecture, ADR, and RFC gates defined in [`PROJECT.md`](PROJECT.md) are satisfied.
+The project is currently in **Phase 0: Landscape Research**. The Phase -1 Capability Matrix has been approved for research. Product implementation must not begin until the Architecture, ADR, RFC and Production Specification gates defined in [`PROJECT.md`](PROJECT.md) are satisfied.
 
 ## Core principles
 
@@ -39,8 +39,8 @@ Runtime Core
 
 ## Delivery sequence
 
-1. Capability Matrix
-2. Landscape Research
+1. Capability Matrix — completed
+2. Landscape Research — active
 3. Architecture Review
 4. ADRs
 5. RFCs and Production Specification
@@ -52,7 +52,8 @@ Runtime Core
 
 - [`PROJECT.md`](PROJECT.md): source of truth and full delivery plan
 - [`docs/README.md`](docs/README.md): documentation map
-- [`docs/01-research/capability-matrix.md`](docs/01-research/capability-matrix.md): Phase -1 baseline
+- [`docs/00-product/current-status.md`](docs/00-product/current-status.md): current gate and work queue
+- [`docs/01-research/capability-matrix.md`](docs/01-research/capability-matrix.md): approved Phase -1 baseline
 - [`docs/01-research/initial-technology-findings.md`](docs/01-research/initial-technology-findings.md): initial research findings
 
 ## Contribution rule
