@@ -235,10 +235,8 @@ impl OrchestrationRepository for SqliteOrchestrationRepository {
             .fetch_optional(&self.pool)
             .await
             .map_err(backend)?;
-        row.map(|value| {
-            serde_json::from_str(value.get::<&str, _>("data_json")).map_err(backend)
-        })
-        .transpose()
+        row.map(|value| serde_json::from_str(value.get::<&str, _>("data_json")).map_err(backend))
+            .transpose()
     }
 
     async fn save_workflow(
@@ -304,8 +302,8 @@ impl OrchestrationRepository for SqliteOrchestrationRepository {
             .await
             .map_err(backend)?;
 
-        for existing in Self::active_locks(&mut transaction, request.resource.workspace_id(), now)
-            .await?
+        for existing in
+            Self::active_locks(&mut transaction, request.resource.workspace_id(), now).await?
         {
             if existing.conflicts_with(request, now) {
                 transaction.rollback().await.map_err(backend)?;
@@ -320,13 +318,12 @@ impl OrchestrationRepository for SqliteOrchestrationRepository {
             .execute(&mut *transaction)
             .await
             .map_err(backend)?;
-        let fencing_token = sqlx::query_scalar::<_, i64>(
-            "SELECT value FROM lock_sequence WHERE id = 1",
-        )
-        .fetch_one(&mut *transaction)
-        .await
-        .map_err(backend)
-        .and_then(to_u64)?;
+        let fencing_token =
+            sqlx::query_scalar::<_, i64>("SELECT value FROM lock_sequence WHERE id = 1")
+                .fetch_one(&mut *transaction)
+                .await
+                .map_err(backend)
+                .and_then(to_u64)?;
 
         let lease = LockLease {
             lock_id: Uuid::new_v4(),
@@ -399,15 +396,13 @@ impl OrchestrationRepository for SqliteOrchestrationRepository {
         }
         lease.expires_at = now + Duration::seconds(i64::from(ttl_seconds));
         let data_json = serde_json::to_string(&lease).map_err(backend)?;
-        sqlx::query(
-            "UPDATE lock_leases SET expires_at = ?, data_json = ? WHERE lock_id = ?",
-        )
-        .bind(lease.expires_at.to_rfc3339())
-        .bind(data_json)
-        .bind(lock_id.to_string())
-        .execute(&mut *transaction)
-        .await
-        .map_err(backend)?;
+        sqlx::query("UPDATE lock_leases SET expires_at = ?, data_json = ? WHERE lock_id = ?")
+            .bind(lease.expires_at.to_rfc3339())
+            .bind(data_json)
+            .bind(lock_id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(backend)?;
         let event = EventEnvelope::new(
             "lock.heartbeat",
             Some(lease.session_id),

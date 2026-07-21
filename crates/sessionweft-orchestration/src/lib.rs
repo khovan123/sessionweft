@@ -919,12 +919,8 @@ where
         actor_id: Option<&str>,
     ) -> Result<WorkflowExecution, OrchestrationError> {
         let mut execution = self.get_workflow(workflow_id).await?;
-        let events = execution.complete_node(
-            expected_version,
-            node_id,
-            correlation_id,
-            actor_id,
-        )?;
+        let events =
+            execution.complete_node(expected_version, node_id, correlation_id, actor_id)?;
         self.repository
             .save_workflow(expected_version, &execution, &events)
             .await
@@ -1026,13 +1022,7 @@ where
         actor_id: Option<&str>,
     ) -> Result<(), OrchestrationError> {
         self.repository
-            .release_lock(
-                lock_id,
-                owner_id,
-                fencing_token,
-                correlation_id,
-                actor_id,
-            )
+            .release_lock(lock_id, owner_id, fencing_token, correlation_id, actor_id)
             .await
             .map_err(OrchestrationError::Repository)
     }
@@ -1126,7 +1116,11 @@ mod tests {
         let definition = WorkflowDefinition {
             name: "fan-out".into(),
             version: 1,
-            nodes: vec![node("plan", &[]), node("worker-a", &["plan"]), node("worker-b", &["plan"])],
+            nodes: vec![
+                node("plan", &[]),
+                node("worker-a", &["plan"]),
+                node("worker-b", &["plan"]),
+            ],
         };
         let mut execution = WorkflowExecution::new(SessionId::new(), definition).expect("workflow");
         assert_eq!(execution.ready_nodes(), vec!["plan"]);
