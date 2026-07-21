@@ -3,9 +3,7 @@ use std::{str::FromStr, time::Duration};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sessionweft_core::{EventEnvelope, SessionId};
-use sessionweft_knowledge::{
-    MemoryClass, MemoryRecord, MemoryRepository, RepositoryError,
-};
+use sessionweft_knowledge::{MemoryClass, MemoryRecord, MemoryRepository, RepositoryError};
 use sqlx::{
     Row, Sqlite, SqlitePool, Transaction,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
@@ -149,15 +147,14 @@ impl SqliteMemoryRepository {
         session_id: SessionId,
         memory_id: Uuid,
     ) -> Result<MemoryRecord, RepositoryError> {
-        let row = sqlx::query(
-            "SELECT data_json FROM memory_records WHERE session_id = ? AND id = ?",
-        )
-        .bind(session_id.to_string())
-        .bind(memory_id.to_string())
-        .fetch_optional(&mut **transaction)
-        .await
-        .map_err(backend)?
-        .ok_or(RepositoryError::MemoryNotFound(memory_id))?;
+        let row =
+            sqlx::query("SELECT data_json FROM memory_records WHERE session_id = ? AND id = ?")
+                .bind(session_id.to_string())
+                .bind(memory_id.to_string())
+                .fetch_optional(&mut **transaction)
+                .await
+                .map_err(backend)?
+                .ok_or(RepositoryError::MemoryNotFound(memory_id))?;
         serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend)
     }
 
@@ -208,18 +205,15 @@ impl MemoryRepository for SqliteMemoryRepository {
         session_id: SessionId,
         memory_id: Uuid,
     ) -> Result<Option<MemoryRecord>, RepositoryError> {
-        let row = sqlx::query(
-            "SELECT data_json FROM memory_records WHERE session_id = ? AND id = ?",
-        )
-        .bind(session_id.to_string())
-        .bind(memory_id.to_string())
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(backend)?;
-        row.map(|row| {
-            serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend)
-        })
-        .transpose()
+        let row =
+            sqlx::query("SELECT data_json FROM memory_records WHERE session_id = ? AND id = ?")
+                .bind(session_id.to_string())
+                .bind(memory_id.to_string())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(backend)?;
+        row.map(|row| serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend))
+            .transpose()
     }
 
     async fn active_candidates(

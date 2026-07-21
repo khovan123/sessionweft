@@ -321,7 +321,9 @@ where
                 })
             })
             .collect::<Vec<_>>();
-        hits.sort_by(|left, right| compare_score_then_id(right.score, left.score, left.record.id, right.record.id));
+        hits.sort_by(|left, right| {
+            compare_score_then_id(right.score, left.score, left.record.id, right.record.id)
+        });
         hits.truncate(query.limit);
         Ok(hits)
     }
@@ -563,7 +565,10 @@ pub struct WorkspaceIndex {
 }
 
 impl WorkspaceIndex {
-    pub fn build(root: impl AsRef<Path>, config: WorkspaceScanConfig) -> Result<Self, KnowledgeError> {
+    pub fn build(
+        root: impl AsRef<Path>,
+        config: WorkspaceScanConfig,
+    ) -> Result<Self, KnowledgeError> {
         if config.max_files == 0 || config.max_file_bytes == 0 {
             return Err(KnowledgeError::Validation(
                 "workspace scan limits must be greater than zero".into(),
@@ -625,7 +630,12 @@ impl WorkspaceIndex {
                     None
                 };
                 let modified_at = metadata.modified().ok().map(DateTime::<Utc>::from);
-                let revision = file_revision(&relative_path, metadata.len(), modified_at, bytes.as_deref());
+                let revision = file_revision(
+                    &relative_path,
+                    metadata.len(),
+                    modified_at,
+                    bytes.as_deref(),
+                );
                 files.push(FileSnapshot {
                     relative_path,
                     size_bytes: metadata.len(),
@@ -649,7 +659,11 @@ impl WorkspaceIndex {
         &self.files
     }
 
-    pub fn search(&self, query: &str, limit: usize) -> Result<Vec<WorkspaceSearchHit>, KnowledgeError> {
+    pub fn search(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<WorkspaceSearchHit>, KnowledgeError> {
         let query_terms = tokenize(query);
         if query_terms.is_empty() {
             return Err(KnowledgeError::Validation(
@@ -742,7 +756,9 @@ fn file_revision(
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     relative_path.hash(&mut hasher);
     size.hash(&mut hasher);
-    modified_at.map(|value| value.timestamp_nanos_opt()).hash(&mut hasher);
+    modified_at
+        .map(|value| value.timestamp_nanos_opt())
+        .hash(&mut hasher);
     bytes.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
@@ -845,7 +861,10 @@ impl VectorStore for InMemoryVectorStore {
         query: &[f32],
         limit: usize,
     ) -> Result<Vec<VectorHit>, RepositoryError> {
-        if namespace.trim().is_empty() || query.is_empty() || query.iter().any(|value| !value.is_finite()) {
+        if namespace.trim().is_empty()
+            || query.is_empty()
+            || query.iter().any(|value| !value.is_finite())
+        {
             return Err(RepositoryError::Backend(
                 "vector search namespace and finite query are required".into(),
             ));
@@ -888,7 +907,11 @@ impl VectorStore for InMemoryVectorStore {
 }
 
 fn cosine_similarity(left: &[f32], right: &[f32]) -> Option<f32> {
-    let dot = left.iter().zip(right).map(|(left, right)| left * right).sum::<f32>();
+    let dot = left
+        .iter()
+        .zip(right)
+        .map(|(left, right)| left * right)
+        .sum::<f32>();
     let left_norm = left.iter().map(|value| value * value).sum::<f32>().sqrt();
     let right_norm = right.iter().map(|value| value * value).sum::<f32>().sqrt();
     let denominator = left_norm * right_norm;
@@ -901,7 +924,9 @@ pub enum KnowledgeError {
     Validation(String),
     #[error("knowledge repository error: {0}")]
     Repository(RepositoryError),
-    #[error("required context needs {required_tokens} tokens but only {usable_budget} are available")]
+    #[error(
+        "required context needs {required_tokens} tokens but only {usable_budget} are available"
+    )]
     RequiredContextOverflow {
         required_tokens: usize,
         usable_budget: usize,
@@ -947,7 +972,9 @@ mod tests {
                 ContextCandidate {
                     id: "memory".into(),
                     kind: ContextKind::Memory,
-                    content: "a long optional memory that will not fit into the remaining token budget".into(),
+                    content:
+                        "a long optional memory that will not fit into the remaining token budget"
+                            .into(),
                     source: "memory:1".into(),
                     inclusion_reason: "lexical match".into(),
                     priority: 10,
@@ -1001,10 +1028,33 @@ mod tests {
             })
             .await
             .expect("upsert");
-        assert_eq!(store.search("session-a", &[1.0, 0.0], 10).await.expect("search").len(), 1);
-        assert_eq!(store.delete_namespace("session-a").await.expect("delete"), 1);
-        assert!(store.search("session-a", &[1.0, 0.0], 10).await.expect("search").is_empty());
-        assert_eq!(store.search("session-b", &[1.0, 0.0], 10).await.expect("search").len(), 1);
+        assert_eq!(
+            store
+                .search("session-a", &[1.0, 0.0], 10)
+                .await
+                .expect("search")
+                .len(),
+            1
+        );
+        assert_eq!(
+            store.delete_namespace("session-a").await.expect("delete"),
+            1
+        );
+        assert!(
+            store
+                .search("session-a", &[1.0, 0.0], 10)
+                .await
+                .expect("search")
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .search("session-b", &[1.0, 0.0], 10)
+                .await
+                .expect("search")
+                .len(),
+            1
+        );
     }
 
     #[test]
