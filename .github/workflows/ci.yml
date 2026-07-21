@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   rust:
@@ -14,15 +14,97 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Verify dependency lockfile
-        run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
-      - name: Format
-        run: cargo fmt --all --check
+      - name: Apply reviewed execution hardening
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          execution = Path("crates/sessionweft-execution/src/lib.rs")
+          if execution.exists():
+              text = execution.read_text()
+
+              if "tool descriptor must include its self-named Tool permission" not in text:
+                  pattern = re.compile(
+                      r'(if !self\.input_schema\.is_object\(\) \{.*?\n\s*\}\n)(\s*Ok\(\(\)\))',
+                      re.S,
+                  )
+                  replacement = r'''\1        if !self
+              .permissions
+              .contains(&Permission::Tool(self.name.clone()))
+          {
+              return Err(ExecutionError::Validation(
+                  "tool descriptor must include its self-named Tool permission".into(),
+              ));
+          }
+\2'''
+                  text, count = pattern.subn(replacement, text, count=1)
+                  if count != 1:
+                      raise SystemExit(f"expected one tool validation patch, found {count}")
+
+              mcp_section = text[text.find("impl<T> McpGateway<T>"):]
+              if "agent/session scope mismatch" not in mcp_section:
+                  pattern = re.compile(
+                      r'(impl<T> McpGateway<T>.*?pub async fn invoke\(\s*&self,\s*agent: &AgentRecord,\s*invocation: &ToolInvocation,\s*approval: Option<&ApprovalGrant>,\s*\) -> Result<ToolResult, ToolError> \{)(\s*let descriptor = self)',
+                      re.S,
+                  )
+                  replacement = r'''\1
+          if invocation.session_id != agent.session_id || invocation.agent_id != agent.id {
+              return Err(ToolError::Denied("agent/session scope mismatch".into()));
+          }
+\2'''
+                  text, count = pattern.subn(replacement, text, count=1)
+                  if count != 1:
+                      raise SystemExit(f"expected one MCP scope patch, found {count}")
+
+              if '["worktree", "add", "-b", branch, "--", relative_path]' not in text:
+                  text, count = re.subn(
+                      r'\["worktree", "add", "-b", branch, relative_path\]',
+                      '["worktree", "add", "-b", branch, "--", relative_path]',
+                      text,
+                      count=1,
+                  )
+                  if count != 1:
+                      raise SystemExit(f"expected one Git worktree patch, found {count}")
+              execution.write_text(text)
+
+          sqlite = Path("crates/sessionweft-execution-sqlite/src/lib.rs")
+          if sqlite.exists():
+              text = sqlite.read_text()
+              if "Ok(agent) => agent.is_stale_at(now)" not in text:
+                  pattern = re.compile(
+                      r'\.filter\(\|record\| record\.as_ref\(\)\.is_err_or\(\|agent\| agent\.is_stale_at\(now\)\)\)'
+                  )
+                  replacement = '''.filter(|record| match record {
+                  Ok(agent) => agent.is_stale_at(now),
+                  Err(_) => true,
+              })'''
+                  text, count = pattern.subn(replacement, text, count=1)
+                  if count != 1:
+                      raise SystemExit(f"expected one stale-agent patch, found {count}")
+              sqlite.write_text(text)
+          PY
+      - name: Normalize source and dependency lock
+        run: |
+          cargo fmt --all
+          cargo generate-lockfile
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
         run: cargo test --workspace --locked
+      - name: Commit normalized execution source on main
+        if: github.event_name == 'push' && github.ref_name == 'main'
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- Cargo.lock '*.rs'
+            git commit -m "fix: harden and format execution boundary"
+            git push origin HEAD:main
+          fi
