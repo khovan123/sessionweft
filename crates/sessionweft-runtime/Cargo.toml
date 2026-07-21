@@ -1,0 +1,19 @@
+[package]
+name = "sessionweft-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+serde_json.workspace = true
+sessionweft-core = { path = "../sessionweft-core" }
+sessionweft-provider = { path = "../sessionweft-provider" }
+sessionweft-storage = { path = "../sessionweft-storage" }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+uuid.workspace = true

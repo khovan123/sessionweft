@@ -2,60 +2,116 @@
 
 **One session. Many agents. One runtime.**
 
-SessionWeft is a session-first, provider-agnostic runtime for coordinating AI agents over a shared workspace. The runtime owns durable state; IDEs, CLIs, providers, and agents act as clients or pluggable execution components.
+SessionWeft is a session-first, provider-agnostic Runtime for coordinating AI agents over a shared workspace. The Runtime owns durable state; IDEs, CLIs, providers and agents act as clients or pluggable execution components.
 
 ## Status
 
-The project is currently in **Phase 0: Landscape Research**. The Phase -1 Capability Matrix has been approved for research. Product implementation must not begin until the Architecture, ADR, RFC and Production Specification gates defined in [`PROJECT.md`](PROJECT.md) are satisfied.
+The project is in **Phase 2: first Runtime vertical slice**. Phase -1, the Phase 0 decision baseline, Architecture baseline, ADRs, RFC-0001 and Production Specification v0 are complete for this constrained implementation.
 
-## Core principles
+The current code implements:
 
-- Session-first
-- Provider-agnostic
-- Event-driven
-- Plugin-first
-- MCP-native
-- Shared memory and workspace
-- Lock-based collaboration
-- Incremental context assembly
-- Production concerns before feature expansion
+- versioned Session aggregate;
+- optimistic concurrency;
+- SQLite WAL persistence;
+- transactional outbox;
+- bounded local event delivery;
+- provider registry;
+- Echo and Ollama-compatible provider adapters;
+- Runtime service;
+- authenticated bootstrap HTTP API;
+- scriptable CLI;
+- structured logging and recovery-oriented tests.
 
-## Planned architecture
+Workflow, locks, Git collaboration, workspace indexing, memory, MCP, TUI and IDE remain separate implementation streams.
 
-```text
-IDE / CLI
-    |
-    v
-Runtime Core
-    |-- Session Engine
-    |-- Provider Layer
-    |-- Agent Runtime
-    |-- Workflow Engine
-    |-- Workspace Engine
-    |-- Collaboration / Locking
-    |-- Memory and Context
-    `-- MCP / Plugin Runtime
+## Requirements
+
+- Rust 1.88 or newer
+- A local filesystem for the SQLite database
+- Ollama only when using the `ollama` provider
+
+## Run locally
+
+```bash
+cargo run -p sessionweftd
 ```
 
-## Delivery sequence
+The Runtime binds to `127.0.0.1:7447` and creates `sessionweft.db` by default.
 
-1. Capability Matrix — completed
-2. Landscape Research — active
-3. Architecture Review
-4. ADRs
-5. RFCs and Production Specification
-6. Implementation
-7. Testing and hardening
-8. Release and GA
+Check readiness:
+
+```bash
+cargo run -p sessionweft -- health
+```
+
+Create a Session:
+
+```bash
+cargo run -p sessionweft -- create "Demo session"
+```
+
+Select the deterministic Echo provider using the returned Session ID and version:
+
+```bash
+cargo run -p sessionweft -- provider <SESSION_ID> 0 echo test-model
+```
+
+Run a turn:
+
+```bash
+cargo run -p sessionweft -- run <SESSION_ID> 1 "Hello SessionWeft"
+```
+
+Every mutation requires the expected Session version. A stale version returns HTTP `409` instead of overwriting concurrent work.
+
+## Configuration
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SESSIONWEFT_BIND` | `127.0.0.1:7447` | Runtime listen address |
+| `SESSIONWEFT_DATABASE_URL` | `sqlite://sessionweft.db` | SQLite connection URL |
+| `SESSIONWEFT_API_TOKEN` | unset | Bearer token; required for non-loopback bind |
+| `SESSIONWEFT_OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama-compatible endpoint |
+| `SESSIONWEFT_ENDPOINT` | `http://127.0.0.1:7447` | CLI Runtime endpoint |
+| `RUST_LOG` | `info` | Structured log filter |
+
+Example authenticated team-style bind:
+
+```bash
+export SESSIONWEFT_BIND=0.0.0.0:7447
+export SESSIONWEFT_API_TOKEN='replace-with-a-secret'
+cargo run -p sessionweftd
+```
+
+Then provide the same token to the CLI through `SESSIONWEFT_API_TOKEN` or `--token`.
+
+## Test
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```
+
+## Architecture rules
+
+- Session identity never comes from a provider.
+- State and outbox records commit atomically.
+- Durable delivery is treated as at least once.
+- Provider, CLI and API adapters never access the database directly.
+- Tool and plugin execution remain default-deny.
+- Search, memory and vector indexes must be rebuildable projections.
 
 ## Documentation
 
-- [`PROJECT.md`](PROJECT.md): source of truth and full delivery plan
-- [`docs/README.md`](docs/README.md): documentation map
-- [`docs/00-product/current-status.md`](docs/00-product/current-status.md): current gate and work queue
-- [`docs/01-research/capability-matrix.md`](docs/01-research/capability-matrix.md): approved Phase -1 baseline
-- [`docs/01-research/initial-technology-findings.md`](docs/01-research/initial-technology-findings.md): initial research findings
+- [`PROJECT.md`](PROJECT.md): project source of truth and complete roadmap
+- [`docs/00-product/current-status.md`](docs/00-product/current-status.md): current gate and active scope
+- [`docs/01-research/phase-0-synthesis.md`](docs/01-research/phase-0-synthesis.md): technology decisions
+- [`docs/02-architecture/baseline-v1.md`](docs/02-architecture/baseline-v1.md): architecture baseline
+- [`docs/04-adr`](docs/04-adr): accepted decisions
+- [`docs/03-rfc/0001-runtime-vertical-slice.md`](docs/03-rfc/0001-runtime-vertical-slice.md): implementation contract
+- [`docs/05-specs/production-spec-v0.md`](docs/05-specs/production-spec-v0.md): production constraints
 
 ## Contribution rule
 
-Do not introduce an implementation dependency or architectural commitment without a linked research result and, when applicable, an approved ADR or RFC.
+Do not introduce a material dependency or architectural commitment without a linked research result and, where applicable, an approved ADR or RFC.
