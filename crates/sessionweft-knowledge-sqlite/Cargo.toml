@@ -14,3 +14,6 @@ sessionweft-core = { path = "../sessionweft-core" }
 sessionweft-knowledge = { path = "../sessionweft-knowledge" }
 sqlx.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
