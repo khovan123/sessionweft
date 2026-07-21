@@ -20,17 +20,33 @@ jobs:
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Apply targeted source fix
+      - name: Apply targeted source fixes
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path("crates/sessionweft-knowledge/src/lib.rs")
-          text = path.read_text()
+
+          knowledge = Path("crates/sessionweft-knowledge/src/lib.rs")
+          text = knowledge.read_text()
           text = text.replace(
               "for query_term in &query_terms {",
               "for query_term in query_terms.keys() {",
           )
-          path.write_text(text)
+          knowledge.write_text(text)
+
+          sqlite = Path("crates/sessionweft-knowledge-sqlite/src/lib.rs")
+          text = sqlite.read_text()
+          text = text.replace(
+              '''            .filter(|result| {
+                result
+                    .as_ref()
+                    .is_err_or(|record| classes.is_empty() || classes.contains(&record.class))
+            })''',
+              '''            .filter(|result| match result {
+                Ok(record) => classes.is_empty() || classes.contains(&record.class),
+                Err(_) => true,
+            })''',
+          )
+          sqlite.write_text(text)
           PY
       - name: Normalize generated files
         run: |
@@ -45,7 +61,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -- Cargo.lock '*.rs'
-            git commit -m "fix: iterate memory query terms by key"
+            git commit -m "fix: support Rust 1.88 knowledge filtering"
             git push origin HEAD:${{ github.head_ref }}
           fi
       - name: Verify formatting
