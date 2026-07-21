@@ -297,7 +297,7 @@ where
                 let source_terms = tokenize(&record.source.locator);
                 let mut matched = BTreeSet::new();
                 let mut score = 0.0_f32;
-                for query_term in &query_terms {
+                for query_term in query_terms.keys() {
                     let content_count = terms.get(query_term).copied().unwrap_or(0);
                     let source_count = source_terms.get(query_term).copied().unwrap_or(0);
                     if content_count > 0 || source_count > 0 {
