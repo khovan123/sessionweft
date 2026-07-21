@@ -20,9 +20,11 @@ jobs:
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Apply Rust formatting
-        run: cargo fmt --all
-      - name: Commit formatting on internal PR
+      - name: Normalize generated files
+        run: |
+          cargo fmt --all
+          cargo generate-lockfile
+      - name: Commit generated files on internal PR
         if: >-
           github.event_name == 'pull_request' &&
           github.event.pull_request.head.repo.full_name == github.repository
@@ -30,13 +32,13 @@ jobs:
           if ! git diff --quiet; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -- '*.rs'
-            git commit -m "style: apply rustfmt"
+            git add -- Cargo.lock '*.rs'
+            git commit -m "build: normalize Rust sources and lock dependencies"
             git push origin HEAD:${{ github.head_ref }}
           fi
       - name: Verify formatting
         run: cargo fmt --all --check
       - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
