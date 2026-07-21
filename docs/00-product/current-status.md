@@ -1,8 +1,8 @@
 # Project Status
 
 Last updated: 2026-07-22  
-Current phase: **Phase 0 — Landscape Research**  
-Implementation status: **Blocked until Architecture, ADR and RFC gates**
+Current phase: **Phase 2 — First Runtime Vertical Slice**  
+Implementation status: **Authorized by Architecture/ADR/RFC baseline**
 
 ## Completed gates
 
@@ -10,69 +10,73 @@ Implementation status: **Blocked until Architecture, ADR and RFC gates**
 
 - [x] Project domains mapped to capability IDs
 - [x] Must/Should/Could priorities defined
-- [x] Observable baseline acceptance criteria defined
+- [x] Observable acceptance criteria defined
 - [x] Coding Agent, Terminal and Vector Store gaps corrected
-- [x] Security, recovery, deployment and compatibility capabilities reviewed
-- [x] Product-level Phase 0 scope decisions recorded
-- [x] Capability Matrix approved for research
+- [x] Security, recovery, deployment and compatibility reviewed
+- [x] Capability Matrix approved
 
-Phase -1 approval authorizes research and prototypes only. It does not approve production architecture or dependencies.
+### Phase 0 — Landscape Research baseline
 
-## Phase 0 active work
+- [x] State, event, provider and security foundations researched
+- [x] Wave B/C candidates assigned dispositions
+- [x] Runtime-owned state invariant preserved
+- [x] Replacement boundaries defined for external systems
+- [x] Technology shortlist recorded in `phase-0-synthesis.md`
+- [x] First-slice scope and deferred work separated
 
-| Issue | Research stream | Status |
+### Architecture, ADR and RFC baseline
+
+- [x] Architecture baseline v1
+- [x] ADR-0001 Session persistence
+- [x] ADR-0002 Event transport and outbox
+- [x] ADR-0003 Provider contract
+- [x] ADR-0004 Security and observability
+- [x] RFC-0001 Runtime vertical slice
+- [x] Production Specification v0
+
+These approvals authorize the first constrained implementation slice. They do not declare the platform generally available.
+
+## Active implementation scope
+
+1. Rust workspace and CI.
+2. Versioned Session aggregate.
+3. SQLite WAL repository.
+4. Transactional outbox.
+5. Bounded local event transport.
+6. Provider registry.
+7. Echo and Ollama-compatible providers.
+8. Runtime orchestration service.
+9. Bootstrap HTTP control API and CLI.
+10. Authentication, correlation, redaction and structured logs.
+11. Concurrency, persistence and recovery tests.
+
+## Deferred implementation streams
+
+| Issue | Stream | Current decision |
 |---|---|---|
-| #2 | Provider API and routing | Ready |
-| #3 | Local events, JetStream and outbox | Ready |
-| #4 | Memory engines and retrieval benchmark | Ready |
-| #5 | Workflow durability | Ready |
-| #6 | Git and workspace isolation | Ready |
-| #7 | MCP and plugin isolation | Ready |
-| #8 | Session persistence and crash recovery | Ready |
-| #9 | Workspace parsing and indexing | Ready |
+| #4 | Memory engines | Runtime-owned typed baseline first; adapters later |
+| #5 | Workflow durability | Persisted Runtime DAG planned after core Session slice |
+| #6 | Git/workspace isolation | Restricted Git CLI adapter first |
+| #7 | MCP/plugin isolation | Official Rust SDK behind policy gate |
+| #9 | Workspace parsing/indexing | tree-sitter + ripgrep baseline |
+| #13 | Coding-agent architecture | Runtime roles; no isolated durable CLI sessions |
+| #14 | Locking and leases | Persisted hierarchical leases with fencing |
+| #15 | CLI/TUI/IDE | CLI first; TUI and IDE after stable API |
+| #16 | Vector storage | Optional projection; pgvector before mandatory Qdrant |
 
-## Phase 0 additional reports required by `PROJECT.md`
+## Current approved direction
 
-- Coding agent landscape
-- Locking and lease models
-- CLI, TUI and terminal architecture
-- VS Code extension architecture
-- Vector database comparison
-- License compatibility matrix
-- Security and maintenance risk matrix
-- Reuse scorecard
-- Implementation effort estimate
-- Phase 0 approval record
+- Rust 1.88+ and Tokio.
+- Runtime-owned Session identity and state.
+- SQLite WAL local mode and PostgreSQL service mode.
+- Optimistic concurrency with expected versions.
+- Transactional outbox.
+- Local bounded event adapter and NATS JetStream production adapter.
+- Direct provider adapters behind a common contract.
+- Echo and Ollama-compatible reference providers.
+- Default-deny external execution.
+- Structured telemetry without request-body logging.
 
-## Current provisional direction
+## Implementation gate
 
-- Rust + Tokio runtime
-- tonic/prost gRPC boundary
-- Runtime-owned session state
-- Local event adapter plus NATS JetStream durable adapter
-- Official MCP Rust SDK behind SessionWeft policy wrappers
-- Direct provider conformance before optional gateways
-- Memory provider interface before adopting a memory platform
-- Prototype workflow durability alternatives before implementation
-
-These remain research recommendations until Architecture Review and ADR approval.
-
-## Product scope fixed for research
-
-- Initial workspace languages: Rust, TypeScript/JavaScript and Python.
-- Deployment: local single-user plus authenticated single-tenant team service.
-- Multi-tenant SaaS: outside the first production release.
-- Offline baseline: Runtime, CLI, SQLite, local event transport and Ollama-compatible provider.
-- High-risk operations require policy approval: destructive file/Git actions, secret access, external side effects, privilege expansion and policy changes.
-
-## Next gate
-
-Phase 0 exits only when every research category has:
-
-- primary-source evidence;
-- architecture, license, maintenance, security and production-readiness assessment;
-- reproducible prototype or benchmark where material;
-- Adopt/Wrap/Fork/Replace/Reject recommendation;
-- reuse score and effort estimate;
-- documented risks;
-- review approval sufficient to begin Architecture Review.
+A code PR may merge only when formatting, lint, unit/integration tests, concurrency tests, recovery tests, authentication tests and documentation checks pass.
