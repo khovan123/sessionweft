@@ -1,0 +1,19 @@
+[package]
+name = "sessionweft-knowledge-sqlite"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+sessionweft-core = { path = "../sessionweft-core" }
+sessionweft-knowledge = { path = "../sessionweft-knowledge" }
+sqlx.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
