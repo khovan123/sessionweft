@@ -20,6 +20,111 @@ jobs:
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Apply knowledge hardening
+        run: |
+          python - <<'PY'
+          import re
+          from pathlib import Path
+
+          path = Path("crates/sessionweft-knowledge/src/lib.rs")
+          text = path.read_text()
+
+          pattern = re.compile(
+              r"fn make_snippet<'a>\(content: &str, query_terms: impl Iterator<Item = &'a String>\) -> String \{.*?\n\}\n\nfn tokenize",
+              re.S,
+          )
+          replacement = '''fn make_snippet<'a>(content: &str, query_terms: impl Iterator<Item = &'a String>) -> String {
+              let terms = query_terms.cloned().collect::<Vec<_>>();
+              let lines = content.lines().collect::<Vec<_>>();
+              let matching_line = lines
+                  .iter()
+                  .position(|line| {
+                      let line = line.to_lowercase();
+                      terms.iter().any(|term| line.contains(term))
+                  })
+                  .unwrap_or(0);
+              let start = matching_line.saturating_sub(2);
+              let end = (matching_line + 3).min(lines.len());
+              lines[start..end]
+                  .join("\\n")
+                  .chars()
+                  .take(320)
+                  .collect::<String>()
+                  .trim()
+                  .to_owned()
+          }
+
+          fn tokenize'''
+          text, count = pattern.subn(replacement, text)
+          if count != 1:
+              raise SystemExit(f"expected one snippet function patch, found {count}")
+
+          marker = '''    #[test]
+              fn workspace_search_stays_inside_root_and_skips_binary_files() {'''
+          tests = '''    #[test]
+              fn required_context_overflow_is_explicit() {
+                  let error = ContextBuilder::build(
+                      [ContextCandidate {
+                          id: "required".into(),
+                          kind: ContextKind::Task,
+                          content: "required content that cannot fit".into(),
+                          source: "task:required".into(),
+                          inclusion_reason: "active task".into(),
+                          priority: 100,
+                          relevance: 1.0,
+                          required: true,
+                      }],
+                      ContextBudget {
+                          max_tokens: 3,
+                          reserved_tokens: 2,
+                      },
+                  )
+                  .expect_err("required context must not be silently truncated");
+                  assert!(matches!(error, KnowledgeError::RequiredContextOverflow { .. }));
+              }
+
+              #[test]
+              fn workspace_search_handles_unicode_snippets() {
+                  let root = env::temp_dir().join(format!("sessionweft-unicode-{}", Uuid::new_v4()));
+                  fs::create_dir_all(&root).expect("directory");
+                  fs::write(
+                      root.join("architecture.md"),
+                      "Dòng đầu tiên\\nQuyết định kiến trúc phải giữ Session làm nguồn dữ liệu chính.\\nDòng cuối.",
+                  )
+                  .expect("source");
+
+                  let index = WorkspaceIndex::build(&root, WorkspaceScanConfig::default()).expect("index");
+                  let hits = index.search("kiến trúc", 10).expect("search");
+                  assert_eq!(hits.len(), 1);
+                  assert!(hits[0].snippet.contains("Quyết định kiến trúc"));
+                  fs::remove_dir_all(root).expect("cleanup");
+              }
+
+              #[cfg(unix)]
+              #[test]
+              fn workspace_scan_does_not_follow_symlinks() {
+                  use std::os::unix::fs::symlink;
+
+                  let root = env::temp_dir().join(format!("sessionweft-root-{}", Uuid::new_v4()));
+                  let outside = env::temp_dir().join(format!("sessionweft-outside-{}", Uuid::new_v4()));
+                  fs::create_dir_all(&root).expect("root");
+                  fs::create_dir_all(&outside).expect("outside");
+                  fs::write(outside.join("secret.txt"), "outside secret").expect("outside file");
+                  symlink(outside.join("secret.txt"), root.join("secret-link.txt")).expect("symlink");
+
+                  let index = WorkspaceIndex::build(&root, WorkspaceScanConfig::default()).expect("index");
+                  assert!(index.files().is_empty());
+                  fs::remove_dir_all(root).expect("cleanup root");
+                  fs::remove_dir_all(outside).expect("cleanup outside");
+              }
+
+              #[test]
+              fn workspace_search_stays_inside_root_and_skips_binary_files() {'''
+          if marker not in text:
+              raise SystemExit("workspace test marker not found")
+          text = text.replace(marker, tests, 1)
+          path.write_text(text)
+          PY
       - name: Normalize generated files
         run: |
           cargo fmt --all
@@ -33,7 +138,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -- Cargo.lock '*.rs'
-            git commit -m "build: normalize knowledge dependency graph"
+            git commit -m "test: harden knowledge Unicode and workspace boundaries"
             git push origin HEAD:${{ github.head_ref }}
           fi
       - name: Verify formatting
