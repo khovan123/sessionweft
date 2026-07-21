@@ -23,6 +23,7 @@ jobs:
       - name: Apply targeted source fixes
         run: |
           python - <<'PY'
+          import re
           from pathlib import Path
 
           knowledge = Path("crates/sessionweft-knowledge/src/lib.rs")
@@ -35,17 +36,19 @@ jobs:
 
           sqlite = Path("crates/sessionweft-knowledge-sqlite/src/lib.rs")
           text = sqlite.read_text()
-          text = text.replace(
-              '''            .filter(|result| {
-                result
-                    .as_ref()
-                    .is_err_or(|record| classes.is_empty() || classes.contains(&record.class))
-            })''',
-              '''            .filter(|result| match result {
+          pattern = re.compile(
+              r"\.filter\(\|result\| \{\s*"
+              r"result\s*\.as_ref\(\)\s*"
+              r"\.is_err_or\(\|record\| classes\.is_empty\(\) \|\| "
+              r"classes\.contains\(&record\.class\)\)\s*\}\)"
+          )
+          replacement = """.filter(|result| match result {
                 Ok(record) => classes.is_empty() || classes.contains(&record.class),
                 Err(_) => true,
-            })''',
-          )
+            })"""
+          text, count = pattern.subn(replacement, text)
+          if count != 1:
+              raise SystemExit(f"expected one memory filter patch, found {count}")
           sqlite.write_text(text)
           PY
       - name: Normalize generated files
@@ -61,7 +64,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -- Cargo.lock '*.rs'
-            git commit -m "fix: support Rust 1.88 knowledge filtering"
+            git commit -m "fix: enforce Rust 1.88 knowledge filtering"
             git push origin HEAD:${{ github.head_ref }}
           fi
       - name: Verify formatting
