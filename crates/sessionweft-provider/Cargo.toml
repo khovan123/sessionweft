@@ -12,3 +12,6 @@ reqwest.workspace = true
 serde.workspace = true
 sessionweft-core = { path = "../sessionweft-core" }
 thiserror.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
