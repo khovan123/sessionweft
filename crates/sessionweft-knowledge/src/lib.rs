@@ -764,21 +764,27 @@ fn file_revision(
 }
 
 fn make_snippet<'a>(content: &str, query_terms: impl Iterator<Item = &'a String>) -> String {
-    let content_lower = content.to_lowercase();
-    let first_match = query_terms
-        .filter_map(|term| content_lower.find(term))
-        .min()
+    let terms = query_terms.cloned().collect::<Vec<_>>();
+    let lines = content.lines().collect::<Vec<_>>();
+    let matching_line = lines
+        .iter()
+        .position(|line| {
+            let line = line.to_lowercase();
+            terms.iter().any(|term| line.contains(term))
+        })
         .unwrap_or(0);
-    let start = content[..first_match.min(content.len())]
-        .char_indices()
-        .rev()
-        .nth(80)
-        .map_or(0, |(index, _)| index);
-    let end = content[first_match.min(content.len())..]
-        .char_indices()
-        .nth(240)
-        .map_or(content.len(), |(index, _)| first_match + index);
-    content[start..end.min(content.len())].trim().to_owned()
+    let start = matching_line.saturating_sub(2);
+    let end = (matching_line + 3).min(lines.len());
+    lines[start..end]
+        .join(
+            "
+",
+        )
+        .chars()
+        .take(320)
+        .collect::<String>()
+        .trim()
+        .to_owned()
 }
 
 fn tokenize(value: &str) -> BTreeMap<String, usize> {
@@ -991,6 +997,66 @@ mod tests {
         assert_eq!(package.items.len(), 1);
         assert_eq!(package.items[0].candidate.id, "task");
         assert_eq!(package.omitted.len(), 1);
+    }
+
+    #[test]
+    fn required_context_overflow_is_explicit() {
+        let error = ContextBuilder::build(
+            [ContextCandidate {
+                id: "required".into(),
+                kind: ContextKind::Task,
+                content: "required content that cannot fit".into(),
+                source: "task:required".into(),
+                inclusion_reason: "active task".into(),
+                priority: 100,
+                relevance: 1.0,
+                required: true,
+            }],
+            ContextBudget {
+                max_tokens: 3,
+                reserved_tokens: 2,
+            },
+        )
+        .expect_err("required context must not be silently truncated");
+        assert!(matches!(
+            error,
+            KnowledgeError::RequiredContextOverflow { .. }
+        ));
+    }
+
+    #[test]
+    fn workspace_search_handles_unicode_snippets() {
+        let root = env::temp_dir().join(format!("sessionweft-unicode-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("directory");
+        fs::write(
+            root.join("architecture.md"),
+            "Dòng đầu tiên\nQuyết định kiến trúc phải giữ Session làm nguồn dữ liệu chính.\nDòng cuối.",
+        )
+        .expect("source");
+
+        let index = WorkspaceIndex::build(&root, WorkspaceScanConfig::default()).expect("index");
+        let hits = index.search("kiến trúc", 10).expect("search");
+        assert_eq!(hits.len(), 1);
+        assert!(hits[0].snippet.contains("Quyết định kiến trúc"));
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn workspace_scan_does_not_follow_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let root = env::temp_dir().join(format!("sessionweft-root-{}", Uuid::new_v4()));
+        let outside = env::temp_dir().join(format!("sessionweft-outside-{}", Uuid::new_v4()));
+        fs::create_dir_all(&root).expect("root");
+        fs::create_dir_all(&outside).expect("outside");
+        fs::write(outside.join("secret.txt"), "outside secret").expect("outside file");
+        symlink(outside.join("secret.txt"), root.join("secret-link.txt")).expect("symlink");
+
+        let index = WorkspaceIndex::build(&root, WorkspaceScanConfig::default()).expect("index");
+        assert!(index.files().is_empty());
+        fs::remove_dir_all(root).expect("cleanup root");
+        fs::remove_dir_all(outside).expect("cleanup outside");
     }
 
     #[test]
