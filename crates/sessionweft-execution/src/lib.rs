@@ -438,6 +438,14 @@ impl ToolDescriptor {
                 "tool input schema must be a JSON object".into(),
             ));
         }
+        if !self
+            .permissions
+            .contains(&Permission::Tool(self.name.clone()))
+        {
+            return Err(ExecutionError::Validation(
+                "tool descriptor must include its self-named Tool permission".into(),
+            ));
+        }
         Ok(())
     }
 }
@@ -684,6 +692,9 @@ where
         invocation: &ToolInvocation,
         approval: Option<&ApprovalGrant>,
     ) -> Result<ToolResult, ToolError> {
+        if invocation.session_id != agent.session_id || invocation.agent_id != agent.id {
+            return Err(ToolError::Denied("agent/session scope mismatch".into()));
+        }
         let descriptor = self
             .discover()
             .await?
@@ -903,7 +914,7 @@ where
         }
         self.fence_validator.validate(fence).await?;
         self.run_git(
-            ["worktree", "add", "-b", branch, relative_path],
+            ["worktree", "add", "-b", branch, "--", relative_path],
             Some(fence),
         )
         .await
@@ -1087,7 +1098,10 @@ mod tests {
                 input_schema: json!({"type": "object"}),
             },
         });
-        let gateway = McpGateway::new(Arc::clone(&transport), PolicyEngine::new(PolicyConfig::default()));
+        let gateway = McpGateway::new(
+            Arc::clone(&transport),
+            PolicyEngine::new(PolicyConfig::default()),
+        );
         let error = gateway
             .invoke(
                 &agent,
