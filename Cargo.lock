@@ -1430,6 +1430,7 @@ dependencies = [
  "sessionweft-core",
  "sessionweft-knowledge",
  "sqlx",
+ "tokio",
  "uuid",
 ]
 
