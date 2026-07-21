@@ -2,11 +2,18 @@
 
 `PROJECT.md` is the project source of truth. This directory contains the evidence, decisions, specifications, and operational material that support it.
 
+## Active documents
+
+- [`00-product/current-status.md`](00-product/current-status.md): current phase, scope and gate status
+- [`01-research/capability-matrix.md`](01-research/capability-matrix.md): approved Phase -1 capability baseline
+- [`01-research/phase-0-execution-plan.md`](01-research/phase-0-execution-plan.md): active research streams, dependency waves, scoring and exit criteria
+- [`01-research/initial-technology-findings.md`](01-research/initial-technology-findings.md): provisional findings; not approved architecture
+
 ## Structure
 
 | Directory | Purpose | Current phase |
 |---|---|---|
-| `00-product` | Vision, scope, glossary, product requirements | Phase -1 |
+| `00-product` | Vision, scope, glossary, product requirements | All phases |
 | `01-research` | Capability matrix, landscape research, scoring and evidence | Phase -1 / 0 |
 | `02-architecture` | System context, containers, domain and deployment architecture | Architecture Review |
 | `03-rfc` | Implementation contracts and protocol specifications | Phase 1 |
