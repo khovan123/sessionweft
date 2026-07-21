@@ -249,10 +249,9 @@ impl MemoryRepository for SqliteMemoryRepository {
                 serde_json::from_str::<MemoryRecord>(row.get::<&str, _>("data_json"))
                     .map_err(backend)
             })
-            .filter(|result| {
-                result
-                    .as_ref()
-                    .is_err_or(|record| classes.is_empty() || classes.contains(&record.class))
+            .filter(|result| match result {
+                Ok(record) => classes.is_empty() || classes.contains(&record.class),
+                Err(_) => true,
             })
             .collect()
     }
