@@ -76,7 +76,10 @@ where
     }
 
     pub async fn list_sessions(&self, limit: u32) -> Result<Vec<Session>, RuntimeError> {
-        self.repository.list(limit).await.map_err(RuntimeError::from)
+        self.repository
+            .list(limit)
+            .await
+            .map_err(RuntimeError::from)
     }
 
     pub async fn append_message(
@@ -90,13 +93,7 @@ where
     ) -> Result<Session, RuntimeError> {
         let mut session = self.get_session(session_id).await?;
         let event = session
-            .append_message(
-                expected_version,
-                role,
-                content,
-                correlation_id,
-                actor_id,
-            )
+            .append_message(expected_version, role, content, correlation_id, actor_id)
             .map_err(RuntimeError::Domain)?;
         self.repository
             .save(expected_version, &session, &[event])
@@ -115,18 +112,14 @@ where
     ) -> Result<Session, RuntimeError> {
         let provider = provider.into();
         if self.providers.get(&provider).is_none() {
-            return Err(RuntimeError::Provider(ProviderError::NotRegistered(provider)));
+            return Err(RuntimeError::Provider(ProviderError::NotRegistered(
+                provider,
+            )));
         }
 
         let mut session = self.get_session(session_id).await?;
         let event = session
-            .select_provider(
-                expected_version,
-                provider,
-                model,
-                correlation_id,
-                actor_id,
-            )
+            .select_provider(expected_version, provider, model, correlation_id, actor_id)
             .map_err(RuntimeError::Domain)?;
         self.repository
             .save(expected_version, &session, &[event])
@@ -174,12 +167,9 @@ where
             .provider
             .clone()
             .ok_or(RuntimeError::ProviderNotSelected)?;
-        let provider = self
-            .providers
-            .get(&selection.provider)
-            .ok_or_else(|| {
-                RuntimeError::Provider(ProviderError::NotRegistered(selection.provider.clone()))
-            })?;
+        let provider = self.providers.get(&selection.provider).ok_or_else(|| {
+            RuntimeError::Provider(ProviderError::NotRegistered(selection.provider.clone()))
+        })?;
 
         let response = provider
             .complete(ProviderRequest {
@@ -400,13 +390,7 @@ mod tests {
             .await
             .expect("select");
         let session = runtime
-            .run_provider(
-                id,
-                session.version,
-                "hello",
-                Some("test"),
-                correlation_id,
-            )
+            .run_provider(id, session.version, "hello", Some("test"), correlation_id)
             .await
             .expect("run");
 
@@ -442,6 +426,12 @@ mod tests {
         cancellation.cancel();
         task.await.expect("publisher task");
 
-        assert!(repository.pending_outbox(10).await.expect("outbox").is_empty());
+        assert!(
+            repository
+                .pending_outbox(10)
+                .await
+                .expect("outbox")
+                .is_empty()
+        );
     }
 }

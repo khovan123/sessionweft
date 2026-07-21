@@ -356,9 +356,11 @@ impl SecretRedactor {
 
     #[must_use]
     pub fn redact(&self, value: &str) -> String {
-        self.secrets.iter().fold(value.to_owned(), |output, secret| {
-            output.replace(secret, "[REDACTED]")
-        })
+        self.secrets
+            .iter()
+            .fold(value.to_owned(), |output, secret| {
+                output.replace(secret, "[REDACTED]")
+            })
     }
 }
 

@@ -3,9 +3,7 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
-use sessionweft_core::{
-    MessageRole, ProviderRequest, ProviderResponse, ProviderUsage,
-};
+use sessionweft_core::{MessageRole, ProviderRequest, ProviderResponse, ProviderUsage};
 use thiserror::Error;
 
 #[async_trait]

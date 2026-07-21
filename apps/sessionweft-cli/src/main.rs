@@ -70,11 +70,7 @@ async fn main() -> anyhow::Result<()> {
             "/v1/sessions".to_owned(),
             Some(json!({"title": title})),
         ),
-        Command::List { limit } => (
-            Method::GET,
-            format!("/v1/sessions?limit={limit}"),
-            None,
-        ),
+        Command::List { limit } => (Method::GET, format!("/v1/sessions?limit={limit}"), None),
         Command::Get { id } => (Method::GET, format!("/v1/sessions/{id}"), None),
         Command::Message {
             id,
@@ -140,9 +136,8 @@ async fn main() -> anyhow::Result<()> {
     let value = if bytes.is_empty() {
         Value::Null
     } else {
-        serde_json::from_slice::<Value>(&bytes).unwrap_or_else(|_| {
-            Value::String(String::from_utf8_lossy(&bytes).into_owned())
-        })
+        serde_json::from_slice::<Value>(&bytes)
+            .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()))
     };
 
     if !status.is_success() {

@@ -125,11 +125,7 @@ async fn shutdown_signal(cancellation: CancellationToken) {
     cancellation.cancel();
 }
 
-async fn authenticate(
-    State(state): State<AppState>,
-    request: Request,
-    next: Next,
-) -> Response {
+async fn authenticate(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let Some(expected) = state.api_token.as_deref() else {
         return next.run(request).await;
     };

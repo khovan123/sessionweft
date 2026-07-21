@@ -195,12 +195,10 @@ impl SessionRepository for SqliteSessionRepository {
     }
 
     async fn list(&self, limit: u32) -> Result<Vec<Session>, StorageError> {
-        let rows = sqlx::query(
-            "SELECT data_json FROM sessions ORDER BY updated_at DESC LIMIT ?",
-        )
-        .bind(i64::from(limit.clamp(1, 500)))
-        .fetch_all(&self.pool)
-        .await?;
+        let rows = sqlx::query("SELECT data_json FROM sessions ORDER BY updated_at DESC LIMIT ?")
+            .bind(i64::from(limit.clamp(1, 500)))
+            .fetch_all(&self.pool)
+            .await?;
 
         rows.into_iter()
             .map(|row| Self::deserialize_session(row.get::<&str, _>("data_json")))
@@ -381,7 +379,10 @@ mod tests {
             .expect("get")
             .expect("session exists");
         assert_eq!(loaded.version, 1);
-        assert_eq!(repository.pending_outbox(10).await.expect("outbox").len(), 2);
+        assert_eq!(
+            repository.pending_outbox(10).await.expect("outbox").len(),
+            2
+        );
     }
 
     #[tokio::test]
