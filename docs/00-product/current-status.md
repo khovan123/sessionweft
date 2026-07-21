@@ -1,42 +1,48 @@
 # Project Status
 
 Last updated: 2026-07-22  
-Current phase: **Phase -1 — Capability Matrix**  
-Implementation status: **Blocked by project gates**
+Current phase: **Phase 0 — Landscape Research**  
+Implementation status: **Blocked until Architecture, ADR and RFC gates**
 
-## Completed in the bootstrap branch
+## Completed gates
 
-- [x] Public project overview
-- [x] Documentation map and evidence rules
-- [x] Initial Capability Matrix
-- [x] Initial technology findings from primary sources
-- [x] Research report template
-- [x] ADR template
-- [x] RFC template
-- [x] Production readiness checklist
+### Phase -1 — Capability Matrix
 
-## Phase -1 remaining
+- [x] Project domains mapped to capability IDs
+- [x] Must/Should/Could priorities defined
+- [x] Observable baseline acceptance criteria defined
+- [x] Coding Agent, Terminal and Vector Store gaps corrected
+- [x] Security, recovery, deployment and compatibility capabilities reviewed
+- [x] Product-level Phase 0 scope decisions recorded
+- [x] Capability Matrix approved for research
 
-- [ ] Review capability coverage against `PROJECT.md`
-- [ ] Resolve product-level open questions
-- [ ] Add measurable SLO placeholders for every `Must` capability
-- [ ] Define required programming languages for workspace benchmarks
-- [ ] Define local, single-user and multi-user deployment expectations
-- [ ] Approve the Capability Matrix
-- [ ] Record the Phase -1 gate review
+Phase -1 approval authorizes research and prototypes only. It does not approve production architecture or dependencies.
 
-## Phase 0 ready queue
+## Phase 0 active work
 
-1. Provider APIs and routing
-2. Local and durable event transport
-3. Memory systems
-4. Workflow durability
-5. Workspace parsing and indexing
-6. Git integration
-7. MCP and plugin isolation
-8. Storage and session recovery
-9. CLI, TUI and IDE client architecture
-10. Security and observability baseline
+| Issue | Research stream | Status |
+|---|---|---|
+| #2 | Provider API and routing | Ready |
+| #3 | Local events, JetStream and outbox | Ready |
+| #4 | Memory engines and retrieval benchmark | Ready |
+| #5 | Workflow durability | Ready |
+| #6 | Git and workspace isolation | Ready |
+| #7 | MCP and plugin isolation | Ready |
+| #8 | Session persistence and crash recovery | Ready |
+| #9 | Workspace parsing and indexing | Ready |
+
+## Phase 0 additional reports required by `PROJECT.md`
+
+- Coding agent landscape
+- Locking and lease models
+- CLI, TUI and terminal architecture
+- VS Code extension architecture
+- Vector database comparison
+- License compatibility matrix
+- Security and maintenance risk matrix
+- Reuse scorecard
+- Implementation effort estimate
+- Phase 0 approval record
 
 ## Current provisional direction
 
@@ -49,14 +55,24 @@ Implementation status: **Blocked by project gates**
 - Memory provider interface before adopting a memory platform
 - Prototype workflow durability alternatives before implementation
 
-These are research recommendations, not approved architectural decisions.
+These remain research recommendations until Architecture Review and ADR approval.
 
-## Immediate exit criteria
+## Product scope fixed for research
 
-Phase -1 exits only when:
+- Initial workspace languages: Rust, TypeScript/JavaScript and Python.
+- Deployment: local single-user plus authenticated single-tenant team service.
+- Multi-tenant SaaS: outside the first production release.
+- Offline baseline: Runtime, CLI, SQLite, local event transport and Ollama-compatible provider.
+- High-risk operations require policy approval: destructive file/Git actions, secret access, external side effects, privilege expansion and policy changes.
 
-- every project domain is represented in the Capability Matrix;
-- every `Must` capability has an observable acceptance criterion;
-- unresolved product requirements are explicitly tracked;
-- the matrix is reviewed and approved;
-- Phase 0 research owners and scoring criteria are assigned.
+## Next gate
+
+Phase 0 exits only when every research category has:
+
+- primary-source evidence;
+- architecture, license, maintenance, security and production-readiness assessment;
+- reproducible prototype or benchmark where material;
+- Adopt/Wrap/Fork/Replace/Reject recommendation;
+- reuse score and effort estimate;
+- documented risks;
+- review approval sufficient to begin Architecture Review.
