@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, implementation/agent-tool-git-boundary-v2]
   pull_request:
 
 permissions:
@@ -29,11 +29,12 @@ jobs:
           execution = Path("crates/sessionweft-execution/src/lib.rs")
           text = execution.read_text()
 
-          pattern = re.compile(
-              r'(if !self\.input_schema\.is_object\(\) \{.*?\n\s*\}\n)(\s*Ok\(\(\)\))',
-              re.S,
-          )
-          replacement = r'''\1        if !self
+          if "tool descriptor must include its self-named Tool permission" not in text:
+              pattern = re.compile(
+                  r'(if !self\.input_schema\.is_object\(\) \{.*?\n\s*\}\n)(\s*Ok\(\(\)\))',
+                  re.S,
+              )
+              replacement = r'''\1        if !self
               .permissions
               .contains(&Permission::Tool(self.name.clone()))
           {
@@ -42,62 +43,65 @@ jobs:
               ));
           }
 \2'''
-          text, count = pattern.subn(replacement, text, count=1)
-          if count != 1:
-              raise SystemExit(f"expected one tool validation patch, found {count}")
+              text, count = pattern.subn(replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit(f"expected one tool validation patch, found {count}")
 
-          pattern = re.compile(
-              r'(impl<T> McpGateway<T>.*?pub async fn invoke\(\s*&self,\s*agent: &AgentRecord,\s*invocation: &ToolInvocation,\s*approval: Option<&ApprovalGrant>,\s*\) -> Result<ToolResult, ToolError> \{)(\s*let descriptor = self)',
-              re.S,
-          )
-          replacement = r'''\1
+          if "agent/session scope mismatch" not in text[text.find("impl<T> McpGateway<T>"):]:
+              pattern = re.compile(
+                  r'(impl<T> McpGateway<T>.*?pub async fn invoke\(\s*&self,\s*agent: &AgentRecord,\s*invocation: &ToolInvocation,\s*approval: Option<&ApprovalGrant>,\s*\) -> Result<ToolResult, ToolError> \{)(\s*let descriptor = self)',
+                  re.S,
+              )
+              replacement = r'''\1
           if invocation.session_id != agent.session_id || invocation.agent_id != agent.id {
               return Err(ToolError::Denied("agent/session scope mismatch".into()));
           }
 \2'''
-          text, count = pattern.subn(replacement, text, count=1)
-          if count != 1:
-              raise SystemExit(f"expected one MCP scope patch, found {count}")
+              text, count = pattern.subn(replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit(f"expected one MCP scope patch, found {count}")
 
-          text, count = re.subn(
-              r'\["worktree", "add", "-b", branch, relative_path\]',
-              '["worktree", "add", "-b", branch, "--", relative_path]',
-              text,
-              count=1,
-          )
-          if count != 1:
-              raise SystemExit(f"expected one Git worktree patch, found {count}")
+          if '["worktree", "add", "-b", branch, "--", relative_path]' not in text:
+              text, count = re.subn(
+                  r'\["worktree", "add", "-b", branch, relative_path\]',
+                  '["worktree", "add", "-b", branch, "--", relative_path]',
+                  text,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit(f"expected one Git worktree patch, found {count}")
           execution.write_text(text)
 
           sqlite = Path("crates/sessionweft-execution-sqlite/src/lib.rs")
           text = sqlite.read_text()
-          pattern = re.compile(
-              r'\.filter\(\|record\| record\.as_ref\(\)\.is_err_or\(\|agent\| agent\.is_stale_at\(now\)\)\)'
-          )
-          replacement = '''.filter(|record| match record {
+          if "Ok(agent) => agent.is_stale_at(now)" not in text:
+              pattern = re.compile(
+                  r'\.filter\(\|record\| record\.as_ref\(\)\.is_err_or\(\|agent\| agent\.is_stale_at\(now\)\)\)'
+              )
+              replacement = '''.filter(|record| match record {
                   Ok(agent) => agent.is_stale_at(now),
                   Err(_) => true,
               })'''
-          text, count = pattern.subn(replacement, text, count=1)
-          if count != 1:
-              raise SystemExit(f"expected one stale-agent patch, found {count}")
+              text, count = pattern.subn(replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit(f"expected one stale-agent patch, found {count}")
           sqlite.write_text(text)
           PY
       - name: Normalize generated files
         run: |
           cargo fmt --all
           cargo generate-lockfile
-      - name: Commit generated files on internal PR
+      - name: Commit generated files on bootstrap branch
         if: >-
-          github.event_name == 'pull_request' &&
-          github.event.pull_request.head.repo.full_name == github.repository
+          github.event_name == 'push' &&
+          github.ref_name == 'implementation/agent-tool-git-boundary-v2'
         run: |
           if [ -n "$(git status --porcelain)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -- Cargo.lock '*.rs'
             git commit -m "fix: harden agent tool MCP and Git boundaries"
-            git push origin HEAD:${{ github.head_ref }}
+            git push origin HEAD:implementation/agent-tool-git-boundary-v2
           fi
       - name: Verify formatting
         run: cargo fmt --all --check
