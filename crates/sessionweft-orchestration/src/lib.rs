@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sessionweft_core::{EventEnvelope, SessionId};
@@ -1088,6 +1088,8 @@ pub enum RepositoryError {
 
 #[cfg(test)]
 mod tests {
+    use chrono::Duration;
+
     use super::*;
 
     fn node(id: &str, dependencies: &[&str]) -> WorkflowNodeDefinition {
