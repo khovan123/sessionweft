@@ -1,5 +1,7 @@
 [workspace]
 members = [
+  "crates/sessionweft-billing",
+  "crates/sessionweft-billing-stripe",
   "crates/sessionweft-control-plane",
   "crates/sessionweft-core",
   "crates/sessionweft-execution",
@@ -13,9 +15,11 @@ members = [
   "crates/sessionweft-mcp-sqlite",
   "crates/sessionweft-orchestration",
   "crates/sessionweft-orchestration-sqlite",
+  "crates/sessionweft-saas-postgres",
   "crates/sessionweft-scheduler",
   "crates/sessionweft-scheduler-sqlite",
   "crates/sessionweft-task-runner",
+  "crates/sessionweft-tenancy",
   "crates/sessionweft-storage",
   "crates/sessionweft-provider",
   "crates/sessionweft-runtime",

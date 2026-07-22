@@ -2279,6 +2279,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "sessionweft-billing"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sessionweft-tenancy",
+ "thiserror 2.0.19",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "sessionweft-billing-stripe"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "hex",
+ "hmac",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "sessionweft-billing",
+ "sessionweft-tenancy",
+ "sha2",
+ "thiserror 2.0.19",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "sessionweft-client-protocol"
 version = "0.1.0"
 dependencies = [
@@ -2570,6 +2604,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sessionweft-saas-postgres"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde_json",
+ "sessionweft-billing",
+ "sessionweft-tenancy",
+ "sqlx",
+ "thiserror 2.0.19",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "sessionweft-scheduler"
 version = "0.1.0"
 dependencies = [
@@ -2647,6 +2696,18 @@ dependencies = [
  "sessionweft-execution",
  "sessionweft-provider",
  "sessionweft-scheduler",
+ "thiserror 2.0.19",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "sessionweft-tenancy"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
  "thiserror 2.0.19",
  "tokio",
  "uuid",
