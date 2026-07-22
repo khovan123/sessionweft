@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: sessionweft
+      POSTGRES_PASSWORD: sessionweft
+      POSTGRES_DB: sessionweft
+    ports:
+      - "5432:5432"
+    volumes:
+      - sessionweft-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sessionweft -d sessionweft"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  nats:
+    image: nats:2.14.1-alpine
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - sessionweft-jetstream:/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.4
+    profiles: ["vectors"]
+    ports:
+      - "6333:6333"
+    volumes:
+      - sessionweft-qdrant:/qdrant/storage
+
+volumes:
+  sessionweft-postgres:
+  sessionweft-jetstream:
+  sessionweft-qdrant:

@@ -1,0 +1,26 @@
+[package]
+name = "sessionweft-service-postgres"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sessionweft-core = { path = "../sessionweft-core" }
+sessionweft-execution = { path = "../sessionweft-execution" }
+sessionweft-jetstream = { path = "../sessionweft-jetstream" }
+sessionweft-knowledge = { path = "../sessionweft-knowledge" }
+sessionweft-orchestration = { path = "../sessionweft-orchestration" }
+sessionweft-storage = { path = "../sessionweft-storage" }
+sqlx.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tokio-util.workspace = true
