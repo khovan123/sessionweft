@@ -21,8 +21,32 @@ jobs:
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
-        run: cargo fmt --all --check
+        run: |
+          set +e
+          cargo fmt --all --check > fmt.log 2>&1
+          status=$?
+          cat fmt.log
+          exit $status
+      - name: Upload format diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustfmt-log
+          path: fmt.log
+          retention-days: 3
       - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        run: |
+          set +e
+          cargo clippy --workspace --all-targets --locked -- -D warnings > clippy.log 2>&1
+          status=$?
+          tail -n 300 clippy.log
+          exit $status
+      - name: Upload Clippy diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clippy-log
+          path: clippy.log
+          retention-days: 3
       - name: Test
         run: cargo test --workspace --locked
