@@ -165,6 +165,10 @@ pub struct TaskExecutionRecord {
 }
 
 impl TaskExecutionRecord {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "constructor mirrors durable scheduler Claim identity"
+    )]
     #[must_use]
     pub fn prepared(
         claim_id: Uuid,
