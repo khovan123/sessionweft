@@ -25,7 +25,18 @@ jobs:
       - name: Audit Rust dependencies
         run: |
           cargo install cargo-audit --version 0.22.2 --locked
-          cargo audit
+          set +e
+          cargo audit --json > cargo-audit.json
+          status=$?
+          python -m json.tool cargo-audit.json
+          exit $status
+      - name: Upload dependency advisory diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-audit-report
+          path: cargo-audit.json
+          retention-days: 14
       - name: Generate CycloneDX SBOM
         run: |
           cargo install cargo-cyclonedx --version 0.5.9 --locked
