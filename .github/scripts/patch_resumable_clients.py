@@ -13,12 +13,14 @@ def replace_once(path: Path, old: str, new: str, label: str) -> None:
 # Keep ownership of the real PTY child in the waiter thread; no dummy child is needed.
 pty = Path("crates/sessionweft-client-protocol/src/pty.rs")
 text = pty.read_text()
+text = text.replace("PtySize, PtySystem, native_pty_system", "PtySize, native_pty_system", 1)
 text = text.replace("        let mut child = pair\n", "        let child = pair\n", 1)
 text = text.replace(
     "        spawn_waiter(Arc::clone(&session), &mut child);",
     "        spawn_waiter(Arc::clone(&session), child);",
     1,
 )
+text = text.replace("        Ok(session.descriptor()?)", "        session.descriptor()", 1)
 start = text.find("fn spawn_waiter(\n")
 end = text.find("fn validate_start(", start)
 if start < 0 or end < 0:
