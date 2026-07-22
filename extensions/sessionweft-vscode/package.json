@@ -1,0 +1,111 @@
+{
+  "name": "sessionweft",
+  "displayName": "SessionWeft",
+  "description": "Reconnect to SessionWeft Runtime sessions, workflows, locks and approvals.",
+  "version": "0.1.0",
+  "publisher": "sessionweft",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:sessionweft.runtime",
+    "onCommand:sessionweft.attach",
+    "onCommand:sessionweft.configureToken"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p ./",
+    "check": "tsc -p ./ --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.95.0",
+    "typescript": "^5.7.0"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "sessionweft.attach",
+        "title": "SessionWeft: Attach Session"
+      },
+      {
+        "command": "sessionweft.configureToken",
+        "title": "SessionWeft: Configure Runtime Token"
+      },
+      {
+        "command": "sessionweft.refresh",
+        "title": "SessionWeft: Refresh"
+      },
+      {
+        "command": "sessionweft.approve",
+        "title": "SessionWeft: Approve Work"
+      },
+      {
+        "command": "sessionweft.reject",
+        "title": "SessionWeft: Reject Work"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "sessionweft",
+          "title": "SessionWeft",
+          "icon": "media/sessionweft.svg"
+        }
+      ]
+    },
+    "views": {
+      "sessionweft": [
+        {
+          "id": "sessionweft.runtime",
+          "name": "Runtime"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "sessionweft.refresh",
+          "when": "view == sessionweft.runtime",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SessionWeft",
+      "properties": {
+        "sessionweft.endpoint": {
+          "type": "string",
+          "default": "http://127.0.0.1:7447",
+          "description": "SessionWeft Runtime HTTP endpoint."
+        },
+        "sessionweft.agentId": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Agent UUID shown in the Runtime view."
+        },
+        "sessionweft.workflowId": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Workflow UUID shown in the Runtime view."
+        },
+        "sessionweft.workspaceId": {
+          "type": "string",
+          "default": "",
+          "description": "Optional workspace ID used to load active locks."
+        },
+        "sessionweft.refreshIntervalMs": {
+          "type": "number",
+          "default": 2000,
+          "minimum": 500,
+          "maximum": 60000,
+          "description": "Runtime view polling interval."
+        }
+      }
+    }
+  }
+}
