@@ -33,20 +33,39 @@ jobs:
           cargo install cargo-audit --locked
           cargo install cargo-deny --locked
 
-      - name: Prove SQLx MySQL and RSA are absent from the active graph
+      - name: Prove RSA is absent and SQLx MySQL is fail-closed
         run: |
+          set -euo pipefail
           if cargo tree -i rsa --target all > rsa-tree.log 2>&1; then
             cat rsa-tree.log
             echo "rsa is active in the build graph" >&2
             exit 1
           fi
-          if cargo tree -i sqlx-mysql --target all > sqlx-mysql-tree.log 2>&1; then
-            cat sqlx-mysql-tree.log
-            echo "sqlx-mysql is active in the build graph" >&2
-            exit 1
-          fi
           cat rsa-tree.log
+
+          cargo tree -i sqlx-mysql --target all > sqlx-mysql-tree.log 2>&1
           cat sqlx-mysql-tree.log
+
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          metadata = json.loads(subprocess.check_output([
+              "cargo", "metadata", "--locked", "--format-version", "1"
+          ]))
+          matches = [p for p in metadata["packages"] if p["name"] == "sqlx-mysql"]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one sqlx-mysql compatibility package, found {len(matches)}")
+          package = matches[0]
+          manifest = Path(package["manifest_path"]).resolve()
+          expected = Path("crates/sqlx-mysql-disabled/Cargo.toml").resolve()
+          if manifest != expected:
+              raise SystemExit(f"sqlx-mysql resolved outside fail-closed stub: {manifest}")
+          if package.get("source") is not None:
+              raise SystemExit(f"sqlx-mysql unexpectedly has registry source: {package['source']}")
+          print(f"verified fail-closed SQLx MySQL compatibility package: {manifest}")
+          PY
 
       - name: RustSec advisory audit
         run: |
