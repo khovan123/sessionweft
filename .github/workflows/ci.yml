@@ -23,9 +23,17 @@ jobs:
       - name: Apply resumable client patch once
         if: github.event_name == 'pull_request' && github.head_ref == 'implementation/resumable-clients' && github.actor != 'github-actions[bot]'
         run: |
-          python .github/scripts/patch_resumable_clients.py
-          cargo fmt --all
-          cargo generate-lockfile
+          set +e
+          {
+            python .github/scripts/patch_resumable_clients.py
+            cargo fmt --all
+            cargo generate-lockfile
+          } > patch.log 2>&1
+          status=$?
+          cat patch.log
+          if [ $status -ne 0 ]; then
+            exit $status
+          fi
           if [ -n "$(git status --porcelain -- Cargo.toml Cargo.lock apps crates)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -33,6 +41,13 @@ jobs:
             git commit -m "fix: resolve resumable client compile diagnostics"
             git push origin HEAD:${{ github.head_ref }}
           fi
+      - name: Upload patch diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-patch-log
+          path: patch.log
+          retention-days: 3
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
