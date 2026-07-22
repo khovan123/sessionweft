@@ -18,7 +18,58 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt
-      - run: |
+      - name: Apply focused compiler fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('crates/sessionweft-mcp/src/lib.rs')
+          text = path.read_text()
+          text = text.replace(
+              '#[derive(Debug, Clone, PartialEq, Eq)]\npub struct CompatibilityPolicy {',
+              '#[derive(Debug, Clone, Default, PartialEq, Eq)]\npub struct CompatibilityPolicy {',
+              1,
+          )
+          start = text.find('impl Default for CompatibilityPolicy {')
+          if start >= 0:
+              end = text.find('\n}\n\n#[derive(Debug, Clone, PartialEq, Eq)]\npub struct StdioTransportConfig', start)
+              if end < 0:
+                  raise SystemExit('CompatibilityPolicy default impl end not found')
+              text = text[:start] + text[end + 3:]
+          old = '''        let OfficialTransportConfig::Stdio(stdio) = &mut config.transport else {
+            panic!("stdio config")
+        };
+        stdio.cwd = root.clone();
+        assert!(matches!(
+            config.validate(),
+            Err(McpAdapterError::WorkspaceEscape(_))
+        ));
+        stdio.cwd = child.clone();
+        stdio.environment.insert("SECRET_TOKEN".into(), "hidden".into());
+'''
+          new = '''        {
+            let OfficialTransportConfig::Stdio(stdio) = &mut config.transport else {
+                panic!("stdio config")
+            };
+            stdio.cwd = root.clone();
+        }
+        assert!(matches!(
+            config.validate(),
+            Err(McpAdapterError::WorkspaceEscape(_))
+        ));
+        {
+            let OfficialTransportConfig::Stdio(stdio) = &mut config.transport else {
+                panic!("stdio config")
+            };
+            stdio.cwd = child.clone();
+            stdio.environment.insert("SECRET_TOKEN".into(), "hidden".into());
+        }
+'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit('borrow test block not found')
+          path.write_text(text)
+          PY
           cargo fmt --all
           cargo generate-lockfile
       - name: Commit prepared MCP SDK slice
@@ -27,6 +78,6 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add Cargo.lock Cargo.toml crates/sessionweft-mcp
-            git commit -m "build: prepare official MCP SDK adapter"
+            git commit -m "fix: resolve official MCP SDK compile diagnostics"
             git push origin HEAD:${{ github.ref_name }}
           fi
