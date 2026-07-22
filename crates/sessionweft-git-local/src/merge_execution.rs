@@ -74,8 +74,7 @@ impl GitCliMergeExecutor {
         let expected_branch = format!("refs/heads/{}", entry.source_branch);
         if actual_branch != expected_branch {
             return Err(GitOperationError::InvalidOutput(format!(
-                "worktree path {} is checked out at {}, expected {}",
-                worktree_path, actual_branch, expected_branch
+                "worktree path {worktree_path} is checked out at {actual_branch}, expected {expected_branch}"
             )));
         }
         Ok(worktree_path.to_owned())
