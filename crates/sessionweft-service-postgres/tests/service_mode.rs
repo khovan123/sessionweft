@@ -95,14 +95,14 @@ struct CountingHandler {
 impl EventHandler for CountingHandler {
     async fn handle(&self, _event: &EventEnvelope) -> Result<(), String> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        self.completed.notify_waiters();
+        self.completed.notify_one();
         Ok(())
     }
 }
 
 #[tokio::test]
 #[ignore = "requires PostgreSQL and NATS JetStream services"]
-async fn JetStream_redelivery_is_idempotent_across_runtime_restart() {
+async fn jetstream_redelivery_is_idempotent_across_runtime_restart() {
     let database = PostgresServiceDatabase::connect(&postgres_url(), "runtime-consumer")
         .await
         .expect("database");
