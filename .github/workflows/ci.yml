@@ -20,15 +20,16 @@ jobs:
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Apply MCP isolation formatting once
+      - name: Apply bounded MCP initialization once
         if: github.event_name == 'pull_request' && github.head_ref == 'implementation/mcp-plugin-isolation' && github.actor != 'github-actions[bot]'
         run: |
+          python .github/scripts/patch_mcp_initialization_timeout.py
           cargo fmt --all
           if [ -n "$(git status --porcelain -- '*.rs')" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -- '*.rs'
-            git commit -m "style: format MCP plugin isolation"
+            git commit -m "fix: bound MCP initialization and teardown"
             git push origin HEAD:${{ github.head_ref }}
           fi
       - name: Verify dependency lockfile
