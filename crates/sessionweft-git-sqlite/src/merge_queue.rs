@@ -100,7 +100,9 @@ impl SqliteGitWorktreeRepository {
             .fetch_optional(&mut **transaction)
             .await
             .map_err(backend)?
-            .ok_or_else(|| GitRepositoryError::Conflict(format!("merge queue {queue_id} not found")))?;
+            .ok_or_else(|| {
+                GitRepositoryError::Conflict(format!("merge queue {queue_id} not found"))
+            })?;
         serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend)
     }
 
@@ -261,17 +263,18 @@ impl GitMergeQueueRepository for SqliteGitWorktreeRepository {
         self.ensure_merge_queue_tables().await?;
         request.validate().map_err(domain)?;
         let mut transaction = self.pool.begin().await.map_err(backend)?;
-        if let Some(row) = sqlx::query("SELECT data_json FROM git_merge_queue WHERE worktree_id = ?")
-            .bind(request.worktree_id.to_string())
-            .fetch_optional(&mut *transaction)
-            .await
-            .map_err(backend)?
+        if let Some(row) =
+            sqlx::query("SELECT data_json FROM git_merge_queue WHERE worktree_id = ?")
+                .bind(request.worktree_id.to_string())
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(backend)?
         {
-            let existing = serde_json::from_str::<MergeQueueEntry>(
-                row.get::<&str, _>("data_json"),
-            )
-            .map_err(backend)?;
-            if existing.target_branch == request.target_branch && existing.priority == request.priority {
+            let existing = serde_json::from_str::<MergeQueueEntry>(row.get::<&str, _>("data_json"))
+                .map_err(backend)?;
+            if existing.target_branch == request.target_branch
+                && existing.priority == request.priority
+            {
                 return Ok(existing);
             }
             return Err(GitRepositoryError::Conflict(
@@ -352,14 +355,7 @@ impl GitMergeQueueRepository for SqliteGitWorktreeRepository {
             "git.merge_review_recorded",
             correlation_id,
             actor_id,
-            |entry| {
-                entry.record_review(
-                    reviewer_id,
-                    approved,
-                    note.map(str::to_owned),
-                    now,
-                )
-            },
+            |entry| entry.record_review(reviewer_id, approved, note.map(str::to_owned), now),
         )
         .await
     }
@@ -653,9 +649,7 @@ mod tests {
         GitFence, GitMergeQueueRepository, GitWorktreeRepository, MergeQueueRequest,
         WorktreeAllocationRequest,
     };
-    use sessionweft_orchestration::{
-        LockMode, LockRequest, LockResource, OrchestrationService,
-    };
+    use sessionweft_orchestration::{LockMode, LockRequest, LockResource, OrchestrationService};
     use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
 
     use super::*;
@@ -669,10 +663,8 @@ mod tests {
     }
 
     async fn fixture() -> Fixture {
-        let path = std::env::temp_dir().join(format!(
-            "sessionweft-git-merge-queue-{}.db",
-            Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("sessionweft-git-merge-queue-{}.db", Uuid::new_v4()));
         let database_url = format!("sqlite://{}", path.display());
         let orchestration_repository = Arc::new(
             SqliteOrchestrationRepository::connect(&database_url)

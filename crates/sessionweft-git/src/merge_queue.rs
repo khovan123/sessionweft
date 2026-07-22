@@ -5,9 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-    GitRepositoryError, GitWorkspaceError, GitWorktreeRecord, GitWorktreeStatus,
-};
+use crate::{GitRepositoryError, GitWorkspaceError, GitWorktreeRecord, GitWorktreeStatus};
 
 pub const GIT_MERGE_QUEUE_SCHEMA_VERSION: u32 = 1;
 
@@ -251,7 +249,10 @@ impl MergeQueueEntry {
         reason: impl Into<String>,
         now: DateTime<Utc>,
     ) -> Result<(), GitWorkspaceError> {
-        if !matches!(self.status, MergeQueueStatus::Queued | MergeQueueStatus::Claimed) {
+        if !matches!(
+            self.status,
+            MergeQueueStatus::Queued | MergeQueueStatus::Claimed
+        ) {
             return Err(GitWorkspaceError::InvalidTransition(format!(
                 "merge queue entry {} cannot be cancelled from {:?}",
                 self.id, self.status
@@ -352,7 +353,10 @@ impl MergeQueueEntry {
         sanitized_error: impl Into<String>,
         now: DateTime<Utc>,
     ) -> Result<(), GitWorkspaceError> {
-        if !matches!(self.status, MergeQueueStatus::Claimed | MergeQueueStatus::Merging) {
+        if !matches!(
+            self.status,
+            MergeQueueStatus::Claimed | MergeQueueStatus::Merging
+        ) {
             return Err(GitWorkspaceError::InvalidTransition(format!(
                 "merge queue entry {} cannot fail from {:?}",
                 self.id, self.status
@@ -595,9 +599,7 @@ fn validate_branch(value: &str) -> Result<(), GitWorkspaceError> {
 fn validate_commit(value: &str) -> Result<(), GitWorkspaceError> {
     let value = value.trim();
     if !(7..=64).contains(&value.len())
-        || !value
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
+        || !value.chars().all(|character| character.is_ascii_hexdigit())
     {
         return Err(GitWorkspaceError::Validation(
             "commit must be a 7 to 64 character hexadecimal object ID".into(),
