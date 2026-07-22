@@ -24,6 +24,7 @@ members = [
   "crates/sessionweft-jetstream",
   "crates/sessionweft-client-protocol",
   "crates/sessionweft-client-protocol-sqlite",
+  "crates/sessionweft-release-gate",
   "apps/sessionweftd",
   "apps/sessionweft-cli",
   "apps/sessionweft-tui",
