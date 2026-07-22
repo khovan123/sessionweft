@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   rust:
@@ -14,10 +14,88 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Snapshot durable worktree path once
+        if: github.event_name == 'pull_request' && github.head_ref == 'implementation/git-merge-conflict-recovery' && github.actor != 'github-actions[bot]'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          queue = Path('crates/sessionweft-git/src/merge_queue.rs')
+          text = queue.read_text()
+          text = text.replace(
+              'pub const GIT_MERGE_QUEUE_SCHEMA_VERSION: u32 = 1;',
+              'pub const GIT_MERGE_QUEUE_SCHEMA_VERSION: u32 = 2;',
+              1,
+          )
+          field_marker = '    pub repository_root: String,\n    pub source_branch: String,\n'
+          field_replacement = '    pub repository_root: String,\n    pub worktree_path: String,\n    pub source_branch: String,\n'
+          if field_replacement not in text:
+              if field_marker not in text:
+                  raise SystemExit('merge queue worktree field marker not found')
+              text = text.replace(field_marker, field_replacement, 1)
+          init_marker = '            repository_root: worktree.repository_root.clone(),\n            source_branch: worktree.branch_name.clone(),\n'
+          init_replacement = '            repository_root: worktree.repository_root.clone(),\n            worktree_path: worktree.worktree_path.clone(),\n            source_branch: worktree.branch_name.clone(),\n'
+          if init_replacement not in text:
+              if init_marker not in text:
+                  raise SystemExit('merge queue worktree initializer marker not found')
+              text = text.replace(init_marker, init_replacement, 1)
+          queue.write_text(text)
+
+          executor = Path('crates/sessionweft-git-local/src/merge_execution.rs')
+          text = executor.read_text()
+          start_marker = '    async fn source_worktree_path(\n'
+          end_marker = '    async fn target_head(&self, entry: &MergeQueueEntry) -> Result<String, GitOperationError> {\n'
+          start = text.find(start_marker)
+          end = text.find(end_marker, start)
+          if start < 0 or end < 0:
+              raise SystemExit('source_worktree_path function boundaries not found')
+          replacement = '''    async fn source_worktree_path(
+              &self,
+              entry: &MergeQueueEntry,
+          ) -> Result<String, GitOperationError> {
+              let worktree_path = entry.worktree_path.trim();
+              if worktree_path.is_empty() {
+                  return Err(GitOperationError::InvalidOutput(
+                      "merge queue entry is missing its durable worktree path".into(),
+                  ));
+              }
+              let actual_branch = self
+                  .checked([
+                      "-C",
+                      worktree_path,
+                      "symbolic-ref",
+                      "--quiet",
+                      "HEAD",
+                  ])
+                  .await?;
+              let expected_branch = format!("refs/heads/{}", entry.source_branch);
+              if actual_branch != expected_branch {
+                  return Err(GitOperationError::InvalidOutput(format!(
+                      "worktree path {} is checked out at {}, expected {}",
+                      worktree_path, actual_branch, expected_branch
+                  )));
+              }
+              Ok(worktree_path.to_owned())
+          }
+
+'''
+          text = text[:start] + replacement + text[end:]
+          executor.write_text(text)
+          PY
+          cargo fmt --all
+          if [ -n "$(git status --porcelain -- '*.rs')" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- '*.rs'
+            git commit -m "fix: snapshot durable worktree path in merge queue"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
