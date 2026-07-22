@@ -62,23 +62,28 @@ impl GitCliMergeExecutor {
         &self,
         entry: &MergeQueueEntry,
     ) -> Result<String, GitOperationError> {
-        let reference = format!("refs/heads/{}", entry.source_branch);
-        let worktree_path = self
+        let listing = self
             .checked([
                 "-C",
                 entry.repository_root.as_str(),
                 "for-each-ref",
-                "--format=%(worktreepath)",
-                reference.as_str(),
+                "--format=%(refname)|%(worktreepath)",
+                "refs/heads",
             ])
             .await?;
-        if worktree_path.is_empty() {
-            return Err(GitOperationError::InvalidOutput(format!(
-                "no registered worktree found for source branch {}",
-                entry.source_branch
-            )));
+        let expected_reference = format!("refs/heads/{}", entry.source_branch);
+        for line in listing.lines() {
+            let Some((reference, worktree_path)) = line.split_once('|') else {
+                continue;
+            };
+            if reference == expected_reference && !worktree_path.is_empty() {
+                return Ok(worktree_path.to_owned());
+            }
         }
-        Ok(worktree_path)
+        Err(GitOperationError::InvalidOutput(format!(
+            "no registered worktree found for source branch {}",
+            entry.source_branch
+        )))
     }
 
     async fn target_head(&self, entry: &MergeQueueEntry) -> Result<String, GitOperationError> {
