@@ -92,7 +92,7 @@ impl PostgresServiceDatabase {
         let ttl = chrono::Duration::from_std(self.outbox_claim_ttl)
             .map_err(|error| ServiceDatabaseError::Validation(error.to_string()))?;
         let claimed_until = Utc::now() + ttl;
-        let rows = sqlx::query_as::<_, ClaimedOutboxRow>(
+        let rows = sqlx::query_as::<_, (Uuid, serde_json::Value, i32)>(
             r#"
             WITH candidates AS (
                 SELECT event_id
@@ -116,11 +116,11 @@ impl PostgresServiceDatabase {
         .fetch_all(&self.pool)
         .await?;
         rows.into_iter()
-            .map(|row| {
+            .map(|(event_id, payload_json, publish_attempts)| {
                 Ok(ClaimedOutboxEvent {
-                    event_id: row.event_id,
-                    envelope: serde_json::from_value(row.payload_json)?,
-                    publish_attempts: u32::try_from(row.publish_attempts).map_err(|_| {
+                    event_id,
+                    envelope: serde_json::from_value(payload_json)?,
+                    publish_attempts: u32::try_from(publish_attempts).map_err(|_| {
                         ServiceDatabaseError::Validation(
                             "negative or oversized outbox attempt count".into(),
                         )
@@ -270,7 +270,7 @@ impl PostgresServiceDatabase {
             claim_token: Uuid::new_v4(),
             expires_at,
         };
-        let row = sqlx::query_as::<_, TaskClaimRow>(
+        let row = sqlx::query_as::<_, (String, String, Uuid, DateTime<Utc>)>(
             r#"
             INSERT INTO sessionweft_task_claims (task_id, owner_id, claim_token, expires_at)
             VALUES ($1, $2, $3, $4)
@@ -288,7 +288,12 @@ impl PostgresServiceDatabase {
         .bind(claim.expires_at)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.map(TaskClaim::from))
+        Ok(row.map(|(task_id, owner_id, claim_token, expires_at)| TaskClaim {
+            task_id,
+            owner_id,
+            claim_token,
+            expires_at,
+        }))
     }
 
     pub async fn release_task(&self, claim: &TaskClaim) -> Result<bool, ServiceDatabaseError> {
@@ -311,38 +316,12 @@ pub struct ClaimedOutboxEvent {
     pub publish_attempts: u32,
 }
 
-#[derive(Debug, sqlx::FromRow)]
-struct ClaimedOutboxRow {
-    event_id: Uuid,
-    payload_json: serde_json::Value,
-    publish_attempts: i32,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TaskClaim {
     pub task_id: String,
     pub owner_id: String,
     pub claim_token: Uuid,
     pub expires_at: DateTime<Utc>,
-}
-
-#[derive(Debug, sqlx::FromRow)]
-struct TaskClaimRow {
-    task_id: String,
-    owner_id: String,
-    claim_token: Uuid,
-    expires_at: DateTime<Utc>,
-}
-
-impl From<TaskClaimRow> for TaskClaim {
-    fn from(value: TaskClaimRow) -> Self {
-        Self {
-            task_id: value.task_id,
-            owner_id: value.owner_id,
-            claim_token: value.claim_token,
-            expires_at: value.expires_at,
-        }
-    }
 }
 
 #[derive(Debug, Error)]
