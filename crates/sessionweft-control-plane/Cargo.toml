@@ -1,0 +1,24 @@
+[package]
+name = "sessionweft-control-plane"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sessionweft-core = { path = "../sessionweft-core" }
+sessionweft-execution = { path = "../sessionweft-execution" }
+sessionweft-knowledge = { path = "../sessionweft-knowledge" }
+sessionweft-orchestration = { path = "../sessionweft-orchestration" }
+sessionweft-runtime = { path = "../sessionweft-runtime" }
+sessionweft-storage = { path = "../sessionweft-storage" }
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+sessionweft-execution-sqlite = { path = "../sessionweft-execution-sqlite" }
+sessionweft-knowledge-sqlite = { path = "../sessionweft-knowledge-sqlite" }
+sessionweft-orchestration-sqlite = { path = "../sessionweft-orchestration-sqlite" }
+sessionweft-provider = { path = "../sessionweft-provider" }
+tokio.workspace = true
