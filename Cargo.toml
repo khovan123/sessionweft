@@ -10,6 +10,7 @@ members = [
   "crates/sessionweft-orchestration-sqlite",
   "crates/sessionweft-scheduler",
   "crates/sessionweft-scheduler-sqlite",
+  "crates/sessionweft-task-runner",
   "crates/sessionweft-storage",
   "crates/sessionweft-provider",
   "crates/sessionweft-runtime",
