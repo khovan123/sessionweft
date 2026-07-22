@@ -25,11 +25,11 @@ members = [
   "crates/sessionweft-client-protocol",
   "crates/sessionweft-client-protocol-sqlite",
   "crates/sessionweft-release-gate",
-  "crates/sqlx-mysql-disabled",
   "apps/sessionweftd",
   "apps/sessionweft-cli",
   "apps/sessionweft-tui",
 ]
+exclude = ["crates/sqlx-mysql-disabled"]
 resolver = "2"
 
 [workspace.package]
