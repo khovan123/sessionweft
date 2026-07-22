@@ -11,7 +11,7 @@ serde.workspace = true
 sha2 = "0.10"
 thiserror.workspace = true
 tokio.workspace = true
-wasmtime = { version = "=38.0.0", default-features = false, features = ["cranelift", "runtime", "wat"] }
+wasmtime = { version = "=36.0.10", default-features = false, features = ["cranelift", "runtime", "wat"] }
 
 [dev-dependencies]
 hex = "0.4"
