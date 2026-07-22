@@ -1,0 +1,67 @@
+name: fix-scheduler-test-imports
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'implementation/durable-scheduler-claims'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Move test-only imports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/sessionweft-scheduler-sqlite/src/lib.rs')
+          text = path.read_text()
+          text = text.replace('use chrono::Utc;\n', '', 1)
+          text = text.replace(
+              'use sessionweft_orchestration::{WorkflowExecution, WorkflowNodeStatus};',
+              'use sessionweft_orchestration::WorkflowExecution;',
+              1,
+          )
+          marker = '''    use sessionweft_core::SessionId;
+          use sessionweft_execution::{AgentManifest, AgentRole, AgentService, Capability};
+          use sessionweft_execution_sqlite::SqliteAgentRepository;
+          use sessionweft_orchestration::{
+              OrchestrationService, WorkflowDefinition, WorkflowNodeDefinition, WorkflowNodeKind,
+              WorkflowStatus,
+          };
+'''
+          replacement = '''    use chrono::Utc;
+          use sessionweft_core::SessionId;
+          use sessionweft_execution::{AgentManifest, AgentRole, AgentService, Capability};
+          use sessionweft_execution_sqlite::SqliteAgentRepository;
+          use sessionweft_orchestration::{
+              OrchestrationService, WorkflowDefinition, WorkflowNodeDefinition, WorkflowNodeKind,
+              WorkflowNodeStatus, WorkflowStatus,
+          };
+'''
+          if marker not in text:
+              raise SystemExit('test import marker not found')
+          path.write_text(text.replace(marker, replacement, 1))
+          PY
+          cargo fmt --all
+      - name: Commit import fix
+        run: |
+          if [ -n "$(git status --porcelain -- '*.rs')" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- '*.rs'
+            git commit -m "fix: scope scheduler imports to tests"
+            git push origin HEAD:implementation/durable-scheduler-claims
+          fi
