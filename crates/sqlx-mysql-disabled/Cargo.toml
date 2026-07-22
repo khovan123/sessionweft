@@ -9,9 +9,16 @@ publish = false
 
 [features]
 default = []
+any = []
+bigdecimal = []
 chrono = []
-uuid = []
 json = []
+migrate = []
+offline = []
+rust_decimal = []
+serde = []
+time = []
+uuid = []
 
 [lib]
 path = "src/lib.rs"
