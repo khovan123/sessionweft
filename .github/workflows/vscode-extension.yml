@@ -1,0 +1,33 @@
+name: vscode-extension
+
+on:
+  pull_request:
+    paths:
+      - "extensions/sessionweft-vscode/**"
+      - ".github/workflows/vscode-extension.yml"
+  push:
+    branches: [main]
+    paths:
+      - "extensions/sessionweft-vscode/**"
+      - ".github/workflows/vscode-extension.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: extensions/sessionweft-vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/sessionweft-vscode/package-lock.json
+      - run: npm ci
+      - run: npm run check
+      - run: npm run compile

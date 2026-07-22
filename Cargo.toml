@@ -22,8 +22,11 @@ members = [
   "crates/sessionweft-workspace-intelligence",
   "crates/sessionweft-service-postgres",
   "crates/sessionweft-jetstream",
+  "crates/sessionweft-client-protocol",
+  "crates/sessionweft-client-protocol-sqlite",
   "apps/sessionweftd",
   "apps/sessionweft-cli",
+  "apps/sessionweft-tui",
 ]
 resolver = "2"
 
@@ -37,19 +40,25 @@ repository = "https://github.com/khovan123/sessionweft"
 [workspace.dependencies]
 anyhow = "1"
 async-nats = { version = "0.50", default-features = false, features = ["ring", "jetstream"] }
+async-stream = "0.3"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["json", "macros"] }
 bytes = "1"
 chrono = { version = "0.4", features = ["clock", "serde"] }
 clap = { version = "4", features = ["derive", "env"] }
+crossterm = "0.29"
 futures-util = "0.3"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+portable-pty = "0.9"
+ratatui = { version = "0.30.2", default-features = false, features = ["crossterm_0_29"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "stream"] }
 rmcp = { version = "2.2", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_urlencoded = "0.7"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "postgres", "chrono", "uuid", "json", "derive"] }
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 tower-http = { version = "0.6", features = ["request-id", "trace"] }
 tracing = "0.1"
