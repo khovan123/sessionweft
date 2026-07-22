@@ -5,6 +5,7 @@ POSTGRES_CONTAINER="${POSTGRES_CONTAINER:-sessionweft-hardening-postgres}"
 NATS_CONTAINER="${NATS_CONTAINER:-sessionweft-hardening-nats}"
 export SESSIONWEFT_TEST_POSTGRES_URL="${SESSIONWEFT_TEST_POSTGRES_URL:-postgres://sessionweft:sessionweft@127.0.0.1:5432/sessionweft}"
 export SESSIONWEFT_TEST_NATS_URL="${SESSIONWEFT_TEST_NATS_URL:-nats://127.0.0.1:4222}"
+NATS_HEALTH_URL="${SESSIONWEFT_NATS_MONITOR_URL:-http://127.0.0.1:8222}/healthz"
 
 wait_postgres() {
   for _ in $(seq 1 60); do
@@ -19,7 +20,7 @@ wait_postgres() {
 
 wait_nats() {
   for _ in $(seq 1 60); do
-    if (echo > /dev/tcp/127.0.0.1/4222) >/dev/null 2>&1; then
+    if curl --fail --silent --max-time 2 "$NATS_HEALTH_URL" >/dev/null 2>&1; then
       return 0
     fi
     sleep 1
@@ -39,8 +40,8 @@ run_service_contract
 
 printf '%s\n' "Simulating a JetStream network partition..."
 docker pause "$NATS_CONTAINER" >/dev/null
-if timeout 2 bash -c 'echo > /dev/tcp/127.0.0.1/4222' >/dev/null 2>&1; then
-  printf '%s\n' "NATS remained reachable while paused" >&2
+if curl --fail --silent --max-time 2 "$NATS_HEALTH_URL" >/dev/null 2>&1; then
+  printf '%s\n' "NATS monitoring endpoint still responded while the server was paused" >&2
   docker unpause "$NATS_CONTAINER" >/dev/null || true
   exit 1
 fi
