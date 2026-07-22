@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lints.clippy]
+derivable_impls = "allow"
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
