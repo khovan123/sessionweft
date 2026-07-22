@@ -1,0 +1,72 @@
+name: security-supply-chain
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "apps/**"
+      - "extensions/sessionweft-vscode/package*.json"
+      - "scripts/security/**"
+      - "scripts/release/generate-sbom.py"
+      - "deny.toml"
+      - ".github/workflows/security-supply-chain.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  supply-chain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install security tooling
+        run: |
+          cargo install cargo-audit --locked
+          cargo install cargo-deny --locked
+
+      - name: RustSec advisory audit
+        run: cargo audit --deny warnings
+
+      - name: License, source and duplicate dependency policy
+        run: cargo deny check advisories bans licenses sources
+
+      - name: Scan tracked source for leaked secrets
+        run: bash scripts/security/scan-secrets.sh
+
+      - name: Audit VS Code extension dependencies
+        working-directory: extensions/sessionweft-vscode
+        run: npm audit --audit-level=high
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          python3 scripts/release/generate-sbom.py \
+            --output dist/sessionweft.cdx.json \
+            --version 0.1.0-rc.1 \
+            --commit "$GITHUB_SHA"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path("dist/sessionweft.cdx.json")
+          data = json.loads(path.read_text())
+          assert data["bomFormat"] == "CycloneDX"
+          assert data["specVersion"] == "1.6"
+          assert len(data["components"]) > 0
+          print(f"validated {len(data['components'])} SBOM components")
+          PY
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sessionweft-sbom
+          path: dist/sessionweft.cdx.json
+          if-no-files-found: error
+          retention-days: 30
