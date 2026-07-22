@@ -1,0 +1,21 @@
+[package]
+name = "sessionweft-mcp-sqlite"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
+sessionweft-core = { path = "../sessionweft-core" }
+sessionweft-mcp = { path = "../sessionweft-mcp" }
+sqlx.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+sessionweft-execution = { path = "../sessionweft-execution" }
+tokio.workspace = true
