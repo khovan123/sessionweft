@@ -4,9 +4,7 @@ use sessionweft_core::{Session, SessionId};
 use sessionweft_execution::{
     AgentManifest, AgentRecord, AgentRepository, AgentService, ExecutionError,
 };
-use sessionweft_knowledge::{
-    KnowledgeError, MemoryRecord, MemoryRepository, MemoryService,
-};
+use sessionweft_knowledge::{KnowledgeError, MemoryRecord, MemoryRepository, MemoryService};
 use sessionweft_orchestration::{
     LockLease, LockRequest, OrchestrationError, OrchestrationRepository, OrchestrationService,
     WorkflowDefinition, WorkflowExecution,
