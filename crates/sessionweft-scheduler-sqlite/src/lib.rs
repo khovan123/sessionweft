@@ -1,11 +1,10 @@
 use std::{str::FromStr, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use serde_json::json;
 use sessionweft_core::EventEnvelope;
 use sessionweft_execution::{AgentRecord, AgentStatus};
-use sessionweft_orchestration::{WorkflowExecution, WorkflowNodeStatus};
+use sessionweft_orchestration::WorkflowExecution;
 use sessionweft_scheduler::{
     ClaimRequest, ClaimState, RepositoryError, SchedulerPlan, SchedulerRepository, TaskClaim,
     TaskClaimStatus,
@@ -605,12 +604,13 @@ mod tests {
         sync::Arc,
     };
 
+    use chrono::Utc;
     use sessionweft_core::SessionId;
     use sessionweft_execution::{AgentManifest, AgentRole, AgentService, Capability};
     use sessionweft_execution_sqlite::SqliteAgentRepository;
     use sessionweft_orchestration::{
         OrchestrationService, WorkflowDefinition, WorkflowNodeDefinition, WorkflowNodeKind,
-        WorkflowStatus,
+        WorkflowNodeStatus, WorkflowStatus,
     };
     use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
     use sessionweft_scheduler::{SchedulerService, TaskRequirement};
