@@ -143,7 +143,10 @@ impl GitCliMergeExecutor {
         }
     }
 
-    async fn rebase_state_exists(&self, entry: &MergeQueueEntry) -> Result<bool, GitOperationError> {
+    async fn rebase_state_exists(
+        &self,
+        entry: &MergeQueueEntry,
+    ) -> Result<bool, GitOperationError> {
         let worktree_path = self.source_worktree_path(entry).await?;
         for state in ["rebase-merge", "rebase-apply"] {
             let path = self
@@ -165,12 +168,7 @@ impl GitCliMergeExecutor {
     async fn abort_rebase(&self, entry: &MergeQueueEntry) -> Result<(), GitOperationError> {
         let worktree_path = self.source_worktree_path(entry).await?;
         let output = self
-            .run([
-                "-C",
-                worktree_path.as_str(),
-                "rebase",
-                "--abort",
-            ])
+            .run(["-C", worktree_path.as_str(), "rebase", "--abort"])
             .await?;
         if output.status.success() {
             Ok(())
@@ -209,12 +207,7 @@ impl GitMergeExecutor for GitCliMergeExecutor {
     ) -> Result<RebaseOutcome, GitOperationError> {
         let worktree_path = self.source_worktree_path(entry).await?;
         let output = self
-            .run([
-                "-C",
-                worktree_path.as_str(),
-                "rebase",
-                target_commit,
-            ])
+            .run(["-C", worktree_path.as_str(), "rebase", target_commit])
             .await?;
         if output.status.success() {
             return Ok(RebaseOutcome::Rebased {
@@ -258,7 +251,10 @@ impl GitMergeExecutor for GitCliMergeExecutor {
                 actual_target: actual,
             });
         }
-        if !self.is_ancestor(entry, expected_target, source_head).await? {
+        if !self
+            .is_ancestor(entry, expected_target, source_head)
+            .await?
+        {
             return Err(GitOperationError::Command(
                 "source head is not a fast-forward descendant of target".into(),
             ));

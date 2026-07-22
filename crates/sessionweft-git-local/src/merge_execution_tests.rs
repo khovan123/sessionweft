@@ -28,7 +28,11 @@ impl RepositoryFixture {
             .await
             .expect("repository directory");
         run_git(&root, &["init", "-b", "main"]).await;
-        run_git(&root, &["config", "user.email", "sessionweft@example.invalid"]).await;
+        run_git(
+            &root,
+            &["config", "user.email", "sessionweft@example.invalid"],
+        )
+        .await;
         run_git(&root, &["config", "user.name", "SessionWeft Test"]).await;
         tokio::fs::write(root.join("shared.txt"), shared_content)
             .await
@@ -169,7 +173,10 @@ async fn rebases_fast_forwards_recovers_and_rolls_back() {
             .expect("fast forward"),
         FastForwardOutcome::Applied { ref merge_commit } if merge_commit == &rebased_head
     ));
-    assert_eq!(git_output(&fixture.root, &["rev-parse", "main"]).await, rebased_head);
+    assert_eq!(
+        git_output(&fixture.root, &["rev-parse", "main"]).await,
+        rebased_head
+    );
 
     let mut recovered_entry = entry.clone();
     recovered_entry.head_commit = rebased_head.clone();
@@ -185,7 +192,10 @@ async fn rebases_fast_forwards_recovers_and_rolls_back() {
             .expect("rollback"),
         RollbackOutcome::Applied
     );
-    assert_eq!(git_output(&fixture.root, &["rev-parse", "main"]).await, target_head);
+    assert_eq!(
+        git_output(&fixture.root, &["rev-parse", "main"]).await,
+        target_head
+    );
     fixture.cleanup().await;
 }
 

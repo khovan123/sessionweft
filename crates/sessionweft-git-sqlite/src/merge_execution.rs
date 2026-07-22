@@ -53,7 +53,9 @@ impl SqliteGitWorktreeRepository {
             .fetch_optional(&mut **transaction)
             .await
             .map_err(backend)?
-            .ok_or_else(|| GitRepositoryError::Conflict(format!("merge queue {queue_id} not found")))?;
+            .ok_or_else(|| {
+                GitRepositoryError::Conflict(format!("merge queue {queue_id} not found"))
+            })?;
         serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend)
     }
 
@@ -213,11 +215,13 @@ impl GitMergeRecoveryRepository for SqliteGitWorktreeRepository {
         self.ensure_merge_execution_tables().await?;
         let mut transaction = self.pool.begin().await.map_err(backend)?;
         let mut entry = Self::recovery_load_entry(&mut transaction, queue_id).await?;
-        let mut worktree = Self::recovery_load_worktree(&mut transaction, entry.worktree_id).await?;
+        let mut worktree =
+            Self::recovery_load_worktree(&mut transaction, entry.worktree_id).await?;
         entry
             .requeue_after_rebase(target_commit, head_commit, reason, now)
             .map_err(domain)?;
-        Self::recovery_save_worktree_head(&mut transaction, &mut worktree, head_commit, now).await?;
+        Self::recovery_save_worktree_head(&mut transaction, &mut worktree, head_commit, now)
+            .await?;
         Self::recovery_save_entry(&mut transaction, &entry).await?;
         Self::recovery_insert_event(
             &mut transaction,
@@ -281,17 +285,14 @@ impl GitMergeRecoveryRepository for SqliteGitWorktreeRepository {
         self.ensure_merge_execution_tables().await?;
         let mut transaction = self.pool.begin().await.map_err(backend)?;
         let mut entry = Self::recovery_load_entry(&mut transaction, queue_id).await?;
-        if let Some(task) = Self::recovery_existing_conflict_task(&mut transaction, queue_id).await? {
+        if let Some(task) =
+            Self::recovery_existing_conflict_task(&mut transaction, queue_id).await?
+        {
             return Ok((entry, task));
         }
-        let task = ConflictResolutionTask::new(
-            &entry,
-            target_commit,
-            source_commit,
-            paths.clone(),
-            now,
-        )
-        .map_err(domain)?;
+        let task =
+            ConflictResolutionTask::new(&entry, target_commit, source_commit, paths.clone(), now)
+                .map_err(domain)?;
         entry.mark_conflict(paths, now).map_err(domain)?;
         Self::recovery_save_entry(&mut transaction, &entry).await?;
         sqlx::query(
@@ -409,9 +410,7 @@ mod tests {
         GitFence, GitMergeQueueRepository, GitWorktreeRepository, MergeQueueRequest,
         WorktreeAllocationRequest,
     };
-    use sessionweft_orchestration::{
-        LockMode, LockRequest, LockResource, OrchestrationService,
-    };
+    use sessionweft_orchestration::{LockMode, LockRequest, LockResource, OrchestrationService};
     use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
 
     use super::*;
@@ -548,12 +547,7 @@ mod tests {
             .expect("entry");
         fixture
             .repository
-            .begin_merge(
-                claimed.id,
-                Utc::now(),
-                Uuid::new_v4(),
-                Some("test"),
-            )
+            .begin_merge(claimed.id, Utc::now(), Uuid::new_v4(), Some("test"))
             .await
             .expect("begin merge")
     }

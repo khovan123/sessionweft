@@ -306,12 +306,7 @@ where
 
         if inspection.target_commit != entry.base_commit {
             return self
-                .execute_rebase(
-                    &entry,
-                    &inspection.target_commit,
-                    correlation_id,
-                    actor_id,
-                )
+                .execute_rebase(&entry, &inspection.target_commit, correlation_id, actor_id)
                 .await;
         }
 
@@ -337,11 +332,7 @@ where
                     Err(repository_error) => {
                         let rollback = self
                             .executor
-                            .rollback(
-                                &entry,
-                                &merge_commit,
-                                &inspection.target_commit,
-                            )
+                            .rollback(&entry, &merge_commit, &inspection.target_commit)
                             .await;
                         let message = match rollback {
                             Ok(RollbackOutcome::Applied) => format!(
@@ -635,9 +626,7 @@ impl MergeQueueRecoveryTransition for MergeQueueEntry {
 fn validate_commit(value: &str) -> Result<(), GitWorkspaceError> {
     let value = value.trim();
     if !(7..=64).contains(&value.len())
-        || !value
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
+        || !value.chars().all(|character| character.is_ascii_hexdigit())
     {
         return Err(GitWorkspaceError::Validation(
             "commit must be a 7 to 64 character hexadecimal object ID".into(),
@@ -652,9 +641,7 @@ mod tests {
     use sessionweft_core::SessionId;
 
     use super::*;
-    use crate::{
-        GitFence, GitWorktreeRecord, MergeQueueRequest, WorktreeAllocationRequest,
-    };
+    use crate::{GitFence, GitWorktreeRecord, MergeQueueRequest, WorktreeAllocationRequest};
 
     fn merging_entry() -> MergeQueueEntry {
         let now = Utc::now();

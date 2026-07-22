@@ -231,7 +231,10 @@ mod tests {
             paths: vec!["src\\lib.rs".into(), "src/lib.rs".into()],
             message: "commit".into(),
         };
-        assert_eq!(request.normalized_paths().expect("paths"), vec!["src/lib.rs"]);
+        assert_eq!(
+            request.normalized_paths().expect("paths"),
+            vec!["src/lib.rs"]
+        );
         let unsafe_request = WorktreeCommitRequest {
             paths: vec!["../secret".into()],
             ..request

@@ -73,8 +73,9 @@ impl GitWorktreeMutationRepository for SqliteGitWorktreeRepository {
             .await
             .map_err(backend)?
             .ok_or(GitRepositoryError::NotFound(worktree_id))?;
-        let mut worktree = serde_json::from_str::<GitWorktreeRecord>(row.get::<&str, _>("data_json"))
-            .map_err(backend)?;
+        let mut worktree =
+            serde_json::from_str::<GitWorktreeRecord>(row.get::<&str, _>("data_json"))
+                .map_err(backend)?;
         if worktree.status != GitWorktreeStatus::Ready
             || worktree.head_commit.as_deref() != Some(expected_head)
         {
@@ -162,9 +163,7 @@ impl GitWorktreeMutationRepository for SqliteGitWorktreeRepository {
 fn validate_commit(value: &str) -> Result<(), GitRepositoryError> {
     let value = value.trim();
     if !(7..=64).contains(&value.len())
-        || !value
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
+        || !value.chars().all(|character| character.is_ascii_hexdigit())
     {
         return Err(GitRepositoryError::Conflict(
             "commit must be a 7 to 64 character hexadecimal object ID".into(),
@@ -183,9 +182,7 @@ mod tests {
         WorktreeAllocationRequest, WorktreeCommitRequest,
     };
     use sessionweft_git_local::{GitCliWorktreeCommitter, GitCliWorktreeProvisioner};
-    use sessionweft_orchestration::{
-        LockMode, LockRequest, LockResource, OrchestrationService,
-    };
+    use sessionweft_orchestration::{LockMode, LockRequest, LockResource, OrchestrationService};
     use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
     use tokio::process::Command;
 
@@ -200,7 +197,11 @@ mod tests {
             .await
             .expect("repository directory");
         run_git(&root, &["init", "-b", "main"]).await;
-        run_git(&root, &["config", "user.email", "sessionweft@example.invalid"]).await;
+        run_git(
+            &root,
+            &["config", "user.email", "sessionweft@example.invalid"],
+        )
+        .await;
         run_git(&root, &["config", "user.name", "SessionWeft Test"]).await;
         tokio::fs::write(root.join("README.md"), "initial\n")
             .await
@@ -209,10 +210,8 @@ mod tests {
         run_git(&root, &["commit", "-m", "initial"]).await;
         let initial = git_output(&root, &["rev-parse", "HEAD"]).await;
 
-        let database = std::env::temp_dir().join(format!(
-            "sessionweft-commit-{}.db",
-            Uuid::new_v4()
-        ));
+        let database =
+            std::env::temp_dir().join(format!("sessionweft-commit-{}.db", Uuid::new_v4()));
         let database_url = format!("sqlite://{}", database.display());
         let orchestration_repository = Arc::new(
             SqliteOrchestrationRepository::connect(&database_url)
@@ -267,15 +266,12 @@ mod tests {
             .await
             .expect("reserve");
         let provisioner = GitCliWorktreeProvisioner::default();
-        let head = provisioner.create(&reserved).await.expect("create worktree");
+        let head = provisioner
+            .create(&reserved)
+            .await
+            .expect("create worktree");
         repository
-            .mark_ready(
-                reserved.id,
-                &head,
-                Utc::now(),
-                Uuid::new_v4(),
-                Some("test"),
-            )
+            .mark_ready(reserved.id, &head, Utc::now(), Uuid::new_v4(), Some("test"))
             .await
             .expect("ready");
         tokio::fs::write(worker.join("feature.txt"), "feature\n")

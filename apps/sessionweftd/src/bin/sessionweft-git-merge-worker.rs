@@ -2,9 +2,7 @@ use std::{env, sync::Arc, time::Duration};
 
 use anyhow::Context;
 use chrono::{Duration as ChronoDuration, Utc};
-use sessionweft_git::{
-    GitMergeCoordinator, GitMergeQueueRepository, MergeExecutionResult,
-};
+use sessionweft_git::{GitMergeCoordinator, GitMergeQueueRepository, MergeExecutionResult};
 use sessionweft_git_local::GitCliMergeExecutor;
 use sessionweft_git_sqlite::SqliteGitWorktreeRepository;
 use sessionweft_scheduler::ExponentialBackoff;

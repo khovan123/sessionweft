@@ -1,9 +1,7 @@
 use std::{ffi::OsString, process::Output, time::Duration};
 
 use async_trait::async_trait;
-use sessionweft_git::{
-    GitOperationError, GitWorktreeCommitter, GitWorktreeRecord,
-};
+use sessionweft_git::{GitOperationError, GitWorktreeCommitter, GitWorktreeRecord};
 use tokio::{process::Command, time::timeout};
 
 #[derive(Debug, Clone)]
@@ -97,12 +95,7 @@ impl GitWorktreeCommitter for GitCliWorktreeCommitter {
                 "worktree index already contains staged changes".into(),
             ));
         }
-        let mut arguments = args([
-            "-C",
-            worktree.worktree_path.as_str(),
-            "add",
-            "--",
-        ]);
+        let mut arguments = args(["-C", worktree.worktree_path.as_str(), "add", "--"]);
         arguments.extend(paths.iter().map(OsString::from));
         let output = self.run(arguments).await?;
         if !output.status.success() {
@@ -121,12 +114,7 @@ impl GitWorktreeCommitter for GitCliWorktreeCommitter {
         worktree: &GitWorktreeRecord,
         paths: &[String],
     ) -> Result<(), GitOperationError> {
-        let mut arguments = args([
-            "-C",
-            worktree.worktree_path.as_str(),
-            "reset",
-            "--",
-        ]);
+        let mut arguments = args(["-C", worktree.worktree_path.as_str(), "reset", "--"]);
         arguments.extend(paths.iter().map(OsString::from));
         let output = self.run(arguments).await?;
         if output.status.success() {
