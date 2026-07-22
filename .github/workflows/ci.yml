@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   rust:
@@ -14,43 +14,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Apply resumable client patch once
-        if: github.event_name == 'pull_request' && github.head_ref == 'implementation/resumable-clients' && github.actor != 'github-actions[bot]'
-        run: |
-          set +e
-          {
-            python .github/scripts/patch_resumable_clients.py
-            sed -i 's/, PtySystem//' crates/sessionweft-client-protocol/src/pty.rs
-            sed -i 's/Ok(session\.descriptor()?)/session.descriptor()/' crates/sessionweft-client-protocol/src/pty.rs
-            sed -i 's/pub(super) fn parse_session_id/pub(crate) fn parse_session_id/' apps/sessionweftd/src/main.rs
-            cargo fmt --all
-            cargo generate-lockfile
-          } > patch.log 2>&1
-          status=$?
-          cat patch.log
-          if [ $status -ne 0 ]; then
-            exit $status
-          fi
-          if [ -n "$(git status --porcelain -- Cargo.toml Cargo.lock apps crates)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add Cargo.toml Cargo.lock apps crates
-            git commit -m "fix: resolve resumable client compile diagnostics"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
-      - name: Upload patch diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: client-patch-log
-          path: patch.log
-          retention-days: 3
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
