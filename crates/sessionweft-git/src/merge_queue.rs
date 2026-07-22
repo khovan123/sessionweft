@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::{GitRepositoryError, GitWorkspaceError, GitWorktreeRecord, GitWorktreeStatus};
 
-pub const GIT_MERGE_QUEUE_SCHEMA_VERSION: u32 = 1;
+pub const GIT_MERGE_QUEUE_SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -105,6 +105,7 @@ pub struct MergeQueueEntry {
     pub agent_id: Uuid,
     pub workspace_id: String,
     pub repository_root: String,
+    pub worktree_path: String,
     pub source_branch: String,
     pub target_branch: String,
     pub base_commit: String,
@@ -165,6 +166,7 @@ impl MergeQueueEntry {
             agent_id: worktree.agent_id,
             workspace_id: worktree.workspace_id.clone(),
             repository_root: worktree.repository_root.clone(),
+            worktree_path: worktree.worktree_path.clone(),
             source_branch: worktree.branch_name.clone(),
             target_branch: request.target_branch,
             base_commit: worktree.base_commit.clone(),

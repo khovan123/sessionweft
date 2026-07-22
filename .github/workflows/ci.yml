@@ -49,4 +49,16 @@ jobs:
           path: clippy.log
           retention-days: 3
       - name: Test
-        run: cargo test --workspace --locked
+        run: |
+          set +e
+          cargo test --workspace --locked > test.log 2>&1
+          status=$?
+          tail -n 400 test.log
+          exit $status
+      - name: Upload test diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: test.log
+          retention-days: 3
