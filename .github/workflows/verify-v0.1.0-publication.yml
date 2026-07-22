@@ -1,0 +1,97 @@
+name: verify-v0.1.0-publication
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/verify-v0.1.0-publication.yml"
+      - "release/publication/v0.1.0.json"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/verify-v0.1.0-publication.yml"
+      - "release/publication/v0.1.0.json"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: v0.1.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch immutable tag and release metadata
+        run: |
+          git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+          mkdir -p /tmp/sessionweft-release
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets,targetCommitish > /tmp/sessionweft-release/release.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path('/tmp/sessionweft-release/release.json').read_text())
+          if release['tagName'] != 'v0.1.0':
+              raise SystemExit('release tag mismatch')
+          if release['isDraft'] or release['isPrerelease']:
+              raise SystemExit('v0.1.0 must be a published stable release')
+          names = {asset['name'] for asset in release['assets']}
+          required_exact = {'sessionweft.cdx.json', 'ga-verified.json'}
+          missing = required_exact - names
+          if missing:
+              raise SystemExit(f'missing release assets: {sorted(missing)}')
+          runtime = [name for name in names if name.startswith('sessionweft-0.1.0-') and name.endswith('.tar.gz')]
+          runtime_checksums = [name for name in names if name.startswith('sessionweft-0.1.0-') and name.endswith('.tar.gz.sha256')]
+          vscode = [name for name in names if name == 'sessionweft-vscode-0.1.0.tar.gz']
+          vscode_checksums = [name for name in names if name == 'sessionweft-vscode-0.1.0.tar.gz.sha256']
+          if not runtime or len(runtime) != len(runtime_checksums) or not vscode or not vscode_checksums:
+              raise SystemExit(f'incomplete runtime/VS Code release asset set: {sorted(names)}')
+          PY
+      - name: Download and verify release assets
+        working-directory: /tmp/sessionweft-release
+        run: |
+          gh release download "$TAG" --clobber
+          for checksum in *.sha256; do
+            sha256sum -c "$checksum"
+          done
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+          sbom = json.loads(Path('sessionweft.cdx.json').read_text())
+          if sbom.get('bomFormat') != 'CycloneDX' or sbom.get('specVersion') != '1.6':
+              raise SystemExit('invalid CycloneDX release SBOM')
+          if not sbom.get('components'):
+              raise SystemExit('release SBOM contains no components')
+          evidence = json.loads(Path('ga-verified.json').read_text())
+          tag_commit = subprocess.check_output(
+              ['git', '-C', '${{ github.workspace }}', 'rev-list', '-n', '1', 'v0.1.0'],
+              text=True,
+          ).strip()
+          if evidence.get('release') != '0.1.0':
+              raise SystemExit('GA evidence release mismatch')
+          if evidence.get('commit') != tag_commit:
+              raise SystemExit(
+                  f"GA evidence commit {evidence.get('commit')} does not match tag commit {tag_commit}"
+              )
+          signoffs = {item['role']: item for item in evidence.get('signoffs', [])}
+          for role in ('architecture', 'security', 'operations'):
+              item = signoffs.get(role)
+              if not item or item.get('decision') != 'approved_for_ga' or item.get('human') is not True:
+                  raise SystemExit(f'missing human GA sign-off for {role}')
+          PY
+      - name: Upload publication verification receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: sessionweft-v0.1.0-publication-verification
+          path: |
+            /tmp/sessionweft-release/release.json
+            /tmp/sessionweft-release/ga-verified.json
+            /tmp/sessionweft-release/sessionweft.cdx.json
+            /tmp/sessionweft-release/*.sha256
+          if-no-files-found: error
+          retention-days: 90
