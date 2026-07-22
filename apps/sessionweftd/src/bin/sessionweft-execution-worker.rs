@@ -5,7 +5,7 @@ use chrono::{Duration as ChronoDuration, Utc};
 use sessionweft_provider::{EchoProvider, OllamaProvider, ProviderRegistry};
 use sessionweft_scheduler::{
     ExponentialBackoff, SchedulerService, TaskExecutionQueueRepository, TaskExecutionRepository,
-    TaskExecutionService, TaskExecutionStatus,
+    TaskExecutionService,
 };
 use sessionweft_scheduler_sqlite::SqliteSchedulerRepository;
 use sessionweft_task_runner::{EchoTool, ProviderToolRunner, ToolRegistry};
