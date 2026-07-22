@@ -11,7 +11,14 @@ anyhow.workspace = true
 axum.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sessionweft-control-plane = { path = "../../crates/sessionweft-control-plane" }
 sessionweft-core = { path = "../../crates/sessionweft-core" }
+sessionweft-execution = { path = "../../crates/sessionweft-execution" }
+sessionweft-execution-sqlite = { path = "../../crates/sessionweft-execution-sqlite" }
+sessionweft-knowledge = { path = "../../crates/sessionweft-knowledge" }
+sessionweft-knowledge-sqlite = { path = "../../crates/sessionweft-knowledge-sqlite" }
+sessionweft-orchestration = { path = "../../crates/sessionweft-orchestration" }
+sessionweft-orchestration-sqlite = { path = "../../crates/sessionweft-orchestration-sqlite" }
 sessionweft-provider = { path = "../../crates/sessionweft-provider" }
 sessionweft-runtime = { path = "../../crates/sessionweft-runtime" }
 sessionweft-storage = { path = "../../crates/sessionweft-storage" }
