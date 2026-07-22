@@ -1,0 +1,45 @@
+name: remove-unused-scheduler-utc
+
+on:
+  push:
+    branches:
+      - implementation/durable-scheduler-claims-ready
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Remove unused Utc import
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/sessionweft-scheduler-sqlite/src/lib.rs')
+          text = path.read_text()
+          marker = '#[cfg(test)]\nmod tests {'
+          index = text.index(marker)
+          before, tests = text[:index], text[index:]
+          target = '    use chrono::Utc;\n'
+          if target not in tests:
+              raise SystemExit('test Utc import not found')
+          path.write_text(before + tests.replace(target, '', 1))
+          PY
+          cargo fmt --all
+      - name: Commit import cleanup
+        run: |
+          if [ -n "$(git status --porcelain -- '*.rs')" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- '*.rs'
+            git commit -m "fix: remove unused scheduler test import"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
