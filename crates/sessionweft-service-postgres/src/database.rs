@@ -288,12 +288,14 @@ impl PostgresServiceDatabase {
         .bind(claim.expires_at)
         .fetch_optional(&self.pool)
         .await?;
-        Ok(row.map(|(task_id, owner_id, claim_token, expires_at)| TaskClaim {
-            task_id,
-            owner_id,
-            claim_token,
-            expires_at,
-        }))
+        Ok(
+            row.map(|(task_id, owner_id, claim_token, expires_at)| TaskClaim {
+                task_id,
+                owner_id,
+                claim_token,
+                expires_at,
+            }),
+        )
     }
 
     pub async fn release_task(&self, claim: &TaskClaim) -> Result<bool, ServiceDatabaseError> {
