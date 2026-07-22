@@ -8,7 +8,7 @@ use std::{
 };
 
 use chrono::Utc;
-use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, PtySystem, native_pty_system};
+use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use thiserror::Error;
 use tokio::sync::Notify;
 use uuid::Uuid;
@@ -133,7 +133,7 @@ impl PtySupervisor {
             .insert(pty_id, Arc::clone(&session));
         spawn_reader(Arc::clone(&session), reader);
         spawn_waiter(Arc::clone(&session), child);
-        Ok(session.descriptor()?)
+        session.descriptor()
     }
 
     pub fn descriptor(&self, pty_id: Uuid) -> Result<PtySessionDescriptor, PtyError> {
