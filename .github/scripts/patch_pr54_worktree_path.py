@@ -35,6 +35,8 @@ queue.write_text(text)
 executor = Path("crates/sessionweft-git-local/src/merge_execution.rs")
 text = executor.read_text()
 start_marker = "    async fn source_worktree_path(\n"
+if "    fn durable_worktree_path(\n" in text:
+    start_marker = "    fn durable_worktree_path(\n"
 end_marker = (
     "    async fn target_head(&self, entry: &MergeQueueEntry) "
     "-> Result<String, GitOperationError> {\n"
@@ -42,21 +44,26 @@ end_marker = (
 start = text.find(start_marker)
 end = text.find(end_marker, start)
 if start < 0 or end < 0:
-    raise SystemExit("source_worktree_path function boundaries not found")
-replacement = '''    async fn source_worktree_path(
-        &self,
-        entry: &MergeQueueEntry,
-    ) -> Result<String, GitOperationError> {
+    raise SystemExit("worktree path function boundaries not found")
+replacement = '''    fn durable_worktree_path(entry: &MergeQueueEntry) -> Result<String, GitOperationError> {
         let worktree_path = entry.worktree_path.trim();
         if worktree_path.is_empty() {
             return Err(GitOperationError::InvalidOutput(
                 "merge queue entry is missing its durable worktree path".into(),
             ));
         }
+        Ok(worktree_path.to_owned())
+    }
+
+    async fn source_worktree_path(
+        &self,
+        entry: &MergeQueueEntry,
+    ) -> Result<String, GitOperationError> {
+        let worktree_path = Self::durable_worktree_path(entry)?;
         let actual_branch = self
             .checked([
                 "-C",
-                worktree_path,
+                worktree_path.as_str(),
                 "symbolic-ref",
                 "--quiet",
                 "HEAD",
@@ -68,11 +75,50 @@ replacement = '''    async fn source_worktree_path(
                 "worktree path {worktree_path} is checked out at {actual_branch}, expected {expected_branch}"
             )));
         }
-        Ok(worktree_path.to_owned())
+        Ok(worktree_path)
     }
 
 '''
 text = text[:start] + replacement + text[end:]
+
+for function_name in ["rebase_state_exists", "abort_rebase"]:
+    function_start = text.find(f"    async fn {function_name}(")
+    if function_start < 0:
+        raise SystemExit(f"{function_name} function not found")
+    next_function = text.find("\n    async fn ", function_start + 1)
+    if next_function < 0:
+        next_function = text.find("\n}\n\n#[async_trait]", function_start)
+    segment = text[function_start:next_function]
+    segment = segment.replace(
+        "let worktree_path = self.source_worktree_path(entry).await?;",
+        "let worktree_path = Self::durable_worktree_path(entry)?;",
+        1,
+    )
+    text = text[:function_start] + segment + text[next_function:]
+
+recover_start = text.find("    async fn recover(\n")
+if recover_start < 0:
+    raise SystemExit("recover function not found")
+old_recover_path = '''        let worktree_path = match self.source_worktree_path(entry).await {
+            Ok(path) => path,
+            Err(GitOperationError::InvalidOutput(_)) => {
+                return Ok(MergeRecoveryObservation::MissingWorktree);
+            }
+            Err(error) => return Err(error),
+        };'''
+new_recover_path = '''        let worktree_path = match Self::durable_worktree_path(entry) {
+            Ok(path) => path,
+            Err(GitOperationError::InvalidOutput(_)) => {
+                return Ok(MergeRecoveryObservation::MissingWorktree);
+            }
+            Err(error) => return Err(error),
+        };'''
+recover_tail = text[recover_start:]
+if old_recover_path in recover_tail:
+    recover_tail = recover_tail.replace(old_recover_path, new_recover_path, 1)
+elif new_recover_path not in recover_tail:
+    raise SystemExit("recover worktree path block not found")
+text = text[:recover_start] + recover_tail
 executor.write_text(text)
 
 tests = Path("crates/sessionweft-git-local/src/merge_execution_tests.rs")
