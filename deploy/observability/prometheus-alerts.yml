@@ -1,0 +1,63 @@
+groups:
+  - name: sessionweft-runtime
+    interval: 30s
+    rules:
+      - alert: SessionWeftRuntimeUnavailable
+        expr: sessionweft_runtime_ready == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: sessionweft
+        annotations:
+          summary: SessionWeft Runtime is not ready
+          runbook: docs/10-deployment/alerts-and-runbooks.md#runtime-unavailable
+
+      - alert: SessionWeftOutboxBacklogGrowing
+        expr: sessionweft_outbox_pending_events > 10000
+        for: 10m
+        labels:
+          severity: high
+          service: sessionweft
+        annotations:
+          summary: SessionWeft Outbox backlog exceeds the RC capacity threshold
+          runbook: docs/10-deployment/alerts-and-runbooks.md#outbox-backlog
+
+      - alert: SessionWeftInboxRetriesStuck
+        expr: sessionweft_inbox_failed_events > 100
+        for: 10m
+        labels:
+          severity: high
+          service: sessionweft
+        annotations:
+          summary: SessionWeft Inbox contains persistent failed deliveries
+          runbook: docs/10-deployment/alerts-and-runbooks.md#inbox-retries
+
+      - alert: SessionWeftJetStreamUnavailable
+        expr: sessionweft_jetstream_streams < 1
+        for: 2m
+        labels:
+          severity: critical
+          service: sessionweft
+        annotations:
+          summary: SessionWeft JetStream stream is unavailable
+          runbook: docs/10-deployment/alerts-and-runbooks.md#jetstream-unavailable
+
+      - alert: SessionWeftJetStreamBacklogHigh
+        expr: sessionweft_jetstream_messages > 100000
+        for: 15m
+        labels:
+          severity: high
+          service: sessionweft
+        annotations:
+          summary: JetStream retained message backlog is high
+          runbook: docs/10-deployment/alerts-and-runbooks.md#jetstream-backlog
+
+      - alert: SessionWeftTaskClaimsSaturated
+        expr: sessionweft_active_task_claims > 10000
+        for: 5m
+        labels:
+          severity: high
+          service: sessionweft
+        annotations:
+          summary: Active task claims exceed the first-release queued-task capacity
+          runbook: docs/10-deployment/alerts-and-runbooks.md#task-claim-saturation

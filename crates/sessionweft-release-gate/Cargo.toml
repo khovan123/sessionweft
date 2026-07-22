@@ -1,0 +1,30 @@
+[package]
+name = "sessionweft-release-gate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+chrono.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+sessionweft-core = { path = "../sessionweft-core" }
+sessionweft-knowledge = { path = "../sessionweft-knowledge" }
+sessionweft-provider = { path = "../sessionweft-provider" }
+sessionweft-runtime = { path = "../sessionweft-runtime" }
+sessionweft-service-postgres = { path = "../sessionweft-service-postgres" }
+sessionweft-storage = { path = "../sessionweft-storage" }
+sqlx.workspace = true
+tempfile = "3"
+tokio.workspace = true
+uuid.workspace = true
+
+[[bin]]
+name = "sessionweft-release-gate"
+path = "src/main.rs"
