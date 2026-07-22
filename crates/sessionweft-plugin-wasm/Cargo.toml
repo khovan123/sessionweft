@@ -1,0 +1,18 @@
+[package]
+name = "sessionweft-plugin-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+sha2 = "0.10"
+thiserror.workspace = true
+tokio.workspace = true
+wasmtime = { version = "=36.0.10", default-features = false, features = ["cranelift", "runtime", "wat"] }
+
+[dev-dependencies]
+hex = "0.4"
+wat = "1"

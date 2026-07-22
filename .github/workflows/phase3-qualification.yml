@@ -1,0 +1,147 @@
+name: phase3-qualification
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/sessionweft-plugin-wasm/**"
+      - "crates/sessionweft-adapter-certification/**"
+      - "crates/sessionweft-tenancy/**"
+      - "crates/sessionweft-billing/**"
+      - "crates/sessionweft-billing-stripe/**"
+      - "crates/sessionweft-saas-postgres/**"
+      - "release/adapters/**"
+      - "scripts/release/materialize-adapter-certifications.py"
+      - ".github/workflows/phase3-qualification.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/sessionweft-plugin-wasm/**"
+      - "crates/sessionweft-adapter-certification/**"
+      - "crates/sessionweft-tenancy/**"
+      - "crates/sessionweft-billing/**"
+      - "crates/sessionweft-billing-stripe/**"
+      - "crates/sessionweft-saas-postgres/**"
+      - "release/adapters/**"
+      - "scripts/release/materialize-adapter-certifications.py"
+      - ".github/workflows/phase3-qualification.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phase3-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  portable-sandbox:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify portable sandbox
+        run: |
+          cargo clippy -p sessionweft-plugin-wasm --all-targets --locked -- -D warnings
+          cargo test -p sessionweft-plugin-wasm --locked
+
+  tenant-billing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: sessionweft_admin
+          POSTGRES_PASSWORD: sessionweft_admin
+          POSTGRES_DB: sessionweft
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sessionweft_admin -d sessionweft"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      PGPASSWORD: sessionweft_admin
+      SESSIONWEFT_TEST_POSTGRES_URL: postgres://sessionweft_runtime:sessionweft_runtime@127.0.0.1:5432/sessionweft
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Create non-superuser Runtime role
+        run: |
+          psql -h 127.0.0.1 -U sessionweft_admin -d sessionweft -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE sessionweft_runtime LOGIN PASSWORD 'sessionweft_runtime' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+          GRANT CONNECT, CREATE ON DATABASE sessionweft TO sessionweft_runtime;
+          GRANT USAGE, CREATE ON SCHEMA public TO sessionweft_runtime;
+          SQL
+      - name: Verify Runtime role cannot bypass row security
+        run: |
+          psql -h 127.0.0.1 -U sessionweft_admin -d sessionweft -Atc \
+            "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = 'sessionweft_runtime'" \
+            | grep -qx f
+      - name: Verify tenancy and billing contracts
+        run: |
+          set -o pipefail
+          {
+            cargo clippy \
+              -p sessionweft-tenancy \
+              -p sessionweft-billing \
+              -p sessionweft-billing-stripe \
+              -p sessionweft-saas-postgres \
+              --all-targets --locked -- -D warnings
+            cargo test -p sessionweft-tenancy -p sessionweft-billing -p sessionweft-billing-stripe --locked
+            cargo test -p sessionweft-saas-postgres --test tenant_isolation --locked -- --ignored --test-threads=1
+          } 2>&1 | tee tenant-billing.log
+      - name: Upload tenant and billing diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-tenant-billing-${{ github.sha }}
+          path: tenant-billing.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  certification:
+    needs: [portable-sandbox, tenant-billing]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify certification implementation
+        run: |
+          cargo clippy -p sessionweft-adapter-certification --all-targets --locked -- -D warnings
+          cargo test -p sessionweft-adapter-certification --locked
+      - name: Materialize exact-commit certifications
+        run: |
+          python3 scripts/release/materialize-adapter-certifications.py \
+            --manifests release/adapters/manifests \
+            --output release/adapters/verified \
+            --commit "$GITHUB_SHA"
+          cargo run -p sessionweft-adapter-certification --locked -- \
+            release/adapters/manifests release/adapters/verified .
+      - name: Upload adapter evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: phase3-adapter-certifications-${{ github.sha }}
+          path: release/adapters/verified/*.json
+          if-no-files-found: error
+          retention-days: 30

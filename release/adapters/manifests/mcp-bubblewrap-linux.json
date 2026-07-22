@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "adapter_id": "mcp-bubblewrap-linux",
+  "version": "1.0.0",
+  "kind": "plugin",
+  "production": true,
+  "supported_platforms": ["linux"],
+  "capabilities": ["mcp_stdio", "filesystem_policy", "network_policy", "environment_policy"],
+  "source_paths": ["crates/sessionweft-mcp/src/isolation.rs", "crates/sessionweft-mcp/tests/malicious.rs"],
+  "required_gates": ["contract", "compatibility", "security", "recovery", "observability", "supply_chain"]
+}

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "adapter_id": "postgres-jetstream-multitenant-deployment",
+  "version": "1.0.0",
+  "kind": "deployment",
+  "production": true,
+  "supported_platforms": ["linux", "macos", "windows"],
+  "capabilities": ["postgresql", "forced_rls", "tenant_context", "quota_authority", "billing_ledger"],
+  "source_paths": ["crates/sessionweft-saas-postgres/src/lib.rs", "crates/sessionweft-saas-postgres/tests/tenant_isolation.rs"],
+  "required_gates": ["contract", "compatibility", "security", "recovery", "observability", "supply_chain"]
+}
