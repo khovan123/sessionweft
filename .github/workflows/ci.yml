@@ -23,7 +23,6 @@ jobs:
       - name: Finalize hardening dependency graph once
         if: github.event_name == 'pull_request' && github.head_ref == 'release/production-hardening-v2' && github.actor != 'github-actions[bot]'
         run: |
-          python3 scripts/hardening/patch_sqlx_row_decoding.py
           cargo fmt --all
           rm -f Cargo.lock
           cargo generate-lockfile
