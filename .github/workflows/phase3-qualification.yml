@@ -63,24 +63,37 @@ jobs:
       postgres:
         image: postgres:17-alpine
         env:
-          POSTGRES_USER: sessionweft
-          POSTGRES_PASSWORD: sessionweft
+          POSTGRES_USER: sessionweft_admin
+          POSTGRES_PASSWORD: sessionweft_admin
           POSTGRES_DB: sessionweft
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U sessionweft -d sessionweft"
+          --health-cmd "pg_isready -U sessionweft_admin -d sessionweft"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 20
     env:
-      SESSIONWEFT_TEST_POSTGRES_URL: postgres://sessionweft:sessionweft@127.0.0.1:5432/sessionweft
+      PGPASSWORD: sessionweft_admin
+      SESSIONWEFT_TEST_POSTGRES_URL: postgres://sessionweft_runtime:sessionweft_runtime@127.0.0.1:5432/sessionweft
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Create non-superuser Runtime role
+        run: |
+          psql -h 127.0.0.1 -U sessionweft_admin -d sessionweft -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE sessionweft_runtime LOGIN PASSWORD 'sessionweft_runtime' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+          GRANT CONNECT, CREATE ON DATABASE sessionweft TO sessionweft_runtime;
+          GRANT USAGE, CREATE ON SCHEMA public TO sessionweft_runtime;
+          SQL
+      - name: Verify Runtime role cannot bypass row security
+        run: |
+          psql -h 127.0.0.1 -U sessionweft_admin -d sessionweft -Atc \
+            "SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = 'sessionweft_runtime'" \
+            | grep -qx f
       - name: Verify tenancy and billing contracts
         run: |
           set -o pipefail
