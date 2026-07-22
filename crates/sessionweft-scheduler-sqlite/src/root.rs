@@ -5,6 +5,7 @@ mod polling;
 mod prerequisites;
 mod recovery;
 mod task_execution;
+mod task_execution_queue;
 
 #[cfg(test)]
 mod prerequisite_tests;
