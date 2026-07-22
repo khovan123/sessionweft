@@ -145,11 +145,9 @@ impl OfficialMcpTransport {
         self.ensure_active()?;
         self.limiter.acquire().await?;
         let remote_name = self.remote_tool_name(&invocation.tool_name)?;
-        let arguments = invocation
-            .arguments
-            .as_object()
-            .cloned()
-            .ok_or_else(|| McpAdapterError::InvalidInvocation("arguments must be an object".into()))?;
+        let arguments = invocation.arguments.as_object().cloned().ok_or_else(|| {
+            McpAdapterError::InvalidInvocation("arguments must be an object".into())
+        })?;
         match &self.config.transport {
             OfficialTransportConfig::Stdio(config) => {
                 self.call_stdio(config, remote_name, arguments).await
@@ -189,9 +187,9 @@ impl OfficialMcpTransport {
         let command = build_stdio_command(config)?;
         let transport = TokioChildProcess::new(command).map_err(McpAdapterError::SdkTransport)?;
         let service = ().serve(transport).await.map_err(sdk_error)?;
-        let info = service
-            .peer_info()
-            .ok_or_else(|| McpAdapterError::Protocol("server omitted initialization info".into()))?;
+        let info = service.peer_info().ok_or_else(|| {
+            McpAdapterError::Protocol("server omitted initialization info".into())
+        })?;
         self.validate_server(&info)?;
         let result = tokio::select! {
             () = self.cancellation.cancelled() => Err(McpAdapterError::Cancelled),
@@ -211,9 +209,9 @@ impl OfficialMcpTransport {
     ) -> Result<Vec<ToolDescriptor>, McpAdapterError> {
         let transport = StreamableHttpClientTransport::from_uri(config.endpoint.as_str());
         let service = ().serve(transport).await.map_err(sdk_error)?;
-        let info = service
-            .peer_info()
-            .ok_or_else(|| McpAdapterError::Protocol("server omitted initialization info".into()))?;
+        let info = service.peer_info().ok_or_else(|| {
+            McpAdapterError::Protocol("server omitted initialization info".into())
+        })?;
         self.validate_server(&info)?;
         let result = tokio::select! {
             () = self.cancellation.cancelled() => Err(McpAdapterError::Cancelled),
@@ -236,9 +234,9 @@ impl OfficialMcpTransport {
         let command = build_stdio_command(config)?;
         let transport = TokioChildProcess::new(command).map_err(McpAdapterError::SdkTransport)?;
         let service = ().serve(transport).await.map_err(sdk_error)?;
-        let info = service
-            .peer_info()
-            .ok_or_else(|| McpAdapterError::Protocol("server omitted initialization info".into()))?;
+        let info = service.peer_info().ok_or_else(|| {
+            McpAdapterError::Protocol("server omitted initialization info".into())
+        })?;
         self.validate_server(&info)?;
         let request = CallToolRequestParams::new(remote_name).with_arguments(arguments);
         let result = tokio::select! {
@@ -261,9 +259,9 @@ impl OfficialMcpTransport {
     ) -> Result<ToolResult, McpAdapterError> {
         let transport = StreamableHttpClientTransport::from_uri(config.endpoint.as_str());
         let service = ().serve(transport).await.map_err(sdk_error)?;
-        let info = service
-            .peer_info()
-            .ok_or_else(|| McpAdapterError::Protocol("server omitted initialization info".into()))?;
+        let info = service.peer_info().ok_or_else(|| {
+            McpAdapterError::Protocol("server omitted initialization info".into())
+        })?;
         self.validate_server(&info)?;
         let request = CallToolRequestParams::new(remote_name).with_arguments(arguments);
         let result = tokio::select! {
@@ -366,9 +364,10 @@ impl OfficialMcpTransport {
         result: CallToolResult,
         info: &InitializeResult,
     ) -> Result<ToolResult, McpAdapterError> {
-        let content = result.structured_content.clone().unwrap_or_else(|| {
-            serde_json::to_value(&result.content).unwrap_or(Value::Null)
-        });
+        let content = result
+            .structured_content
+            .clone()
+            .unwrap_or_else(|| serde_json::to_value(&result.content).unwrap_or(Value::Null));
         let size = serde_json::to_vec(&content)
             .map_err(|error| McpAdapterError::Protocol(error.to_string()))?
             .len();
@@ -385,7 +384,10 @@ impl OfficialMcpTransport {
             content,
             metadata: BTreeMap::from([
                 ("mcp.server".into(), info.server_info.name.clone()),
-                ("mcp.server_version".into(), info.server_info.version.clone()),
+                (
+                    "mcp.server_version".into(),
+                    info.server_info.version.clone(),
+                ),
                 (
                     "mcp.protocol_version".into(),
                     info.protocol_version.as_str().to_owned(),
@@ -402,7 +404,9 @@ impl McpTransport for OfficialMcpTransport {
     }
 
     async fn call_tool(&self, invocation: &ToolInvocation) -> Result<ToolResult, ToolError> {
-        self.invoke_remote(invocation).await.map_err(ToolError::from)
+        self.invoke_remote(invocation)
+            .await
+            .map_err(ToolError::from)
     }
 }
 
@@ -548,9 +552,9 @@ fn build_stdio_command(config: &StdioTransportConfig) -> Result<Command, McpAdap
 }
 
 fn validate_input_schema(name: &str, schema: &Value) -> Result<(), McpAdapterError> {
-    let object = schema
-        .as_object()
-        .ok_or_else(|| McpAdapterError::SchemaSpoofing(format!("tool '{name}' schema is not an object")))?;
+    let object = schema.as_object().ok_or_else(|| {
+        McpAdapterError::SchemaSpoofing(format!("tool '{name}' schema is not an object"))
+    })?;
     if let Some(schema_type) = object.get("type")
         && schema_type != "object"
     {
@@ -581,9 +585,9 @@ impl From<McpAdapterError> for ToolError {
                 ToolError::Execution(format!("MCP operation timed out after {duration:?}"))
             }
             McpAdapterError::RateLimited => ToolError::Denied("MCP rate limit exceeded".into()),
-            McpAdapterError::OutputLimitExceeded { actual, limit } => ToolError::Execution(format!(
-                "MCP result {actual} bytes exceeds limit {limit}"
-            )),
+            McpAdapterError::OutputLimitExceeded { actual, limit } => {
+                ToolError::Execution(format!("MCP result {actual} bytes exceeds limit {limit}"))
+            }
             McpAdapterError::ToolReportedError(content) => {
                 ToolError::Execution(format!("MCP tool reported error: {content}"))
             }
@@ -671,7 +675,9 @@ mod tests {
             Err(McpAdapterError::WorkspaceEscape(_))
         ));
         stdio.cwd = child.clone();
-        stdio.environment.insert("SECRET_TOKEN".into(), "hidden".into());
+        stdio
+            .environment
+            .insert("SECRET_TOKEN".into(), "hidden".into());
         assert!(matches!(
             config.validate(),
             Err(McpAdapterError::InvalidConfig(_))
