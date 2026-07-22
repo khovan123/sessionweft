@@ -15,11 +15,12 @@ permissions:
   contents: write
   id-token: write
   attestations: write
+  artifact-metadata: write
 
 jobs:
   package-and-attest:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       VERSION: ${{ inputs.version || github.ref_name }}
     steps:
@@ -28,6 +29,11 @@ jobs:
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/sessionweft-vscode/package-lock.json
 
       - name: Normalize version
         run: echo "VERSION=${VERSION#v}" >> "$GITHUB_ENV"
@@ -38,6 +44,13 @@ jobs:
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo test --workspace --locked
+
+      - name: Verify VS Code extension
+        working-directory: extensions/sessionweft-vscode
+        run: |
+          npm ci
+          npm run check
+          npm run compile
 
       - name: Materialize evidence for tested commit
         run: |
@@ -56,20 +69,29 @@ jobs:
             --output dist/sessionweft.cdx.json \
             --version "$VERSION" \
             --commit "$GITHUB_SHA"
+          python3 -m json.tool dist/sessionweft.cdx.json >/dev/null
 
-      - name: Build reproducible package
+      - name: Build reproducible Runtime package
         env:
           RELEASE_EVIDENCE_PATH: release/evidence/verified.json
         run: |
           artifact="$(bash scripts/release/package.sh "$VERSION")"
-          echo "artifact=$artifact" >> "$GITHUB_OUTPUT"
-          echo "ARTIFACT=$artifact" >> "$GITHUB_ENV"
+          echo "runtime_artifact=$artifact" >> "$GITHUB_OUTPUT"
         id: package
+
+      - name: Package VS Code client
+        run: |
+          package="dist/sessionweft-vscode-${VERSION}.tar.gz"
+          tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner \
+            --exclude=node_modules \
+            -czf "$package" -C extensions/sessionweft-vscode \
+            package.json package-lock.json out media
+          sha256sum "$package" > "${package}.sha256"
 
       - name: Generate provenance and SBOM attestation
         uses: actions/attest@v4
         with:
-          subject-path: ${{ steps.package.outputs.artifact }}
+          subject-path: dist/*.tar.gz
           sbom-path: dist/sessionweft.cdx.json
 
       - name: Upload release bundle
