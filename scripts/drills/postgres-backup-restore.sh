@@ -23,7 +23,8 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 
-docker exec "$POSTGRES_CONTAINER" psql -U sessionweft -d "$SOURCE_DB" -v ON_ERROR_STOP=1 <<SQL
+# docker exec must keep stdin open for the heredoc to reach psql.
+docker exec -i "$POSTGRES_CONTAINER" psql -U sessionweft -d "$SOURCE_DB" -v ON_ERROR_STOP=1 <<SQL
 CREATE TABLE IF NOT EXISTS hardening_restore_marker (
   marker TEXT PRIMARY KEY,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
