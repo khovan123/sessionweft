@@ -188,10 +188,22 @@ const MIGRATIONS: &[&str] = &[
     r#"ALTER TABLE sessionweft_saas_outbox ENABLE ROW LEVEL SECURITY"#,
     r#"ALTER TABLE sessionweft_saas_outbox FORCE ROW LEVEL SECURITY"#,
     r#"DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_policies
+        WHERE schemaname = current_schema()
+          AND tablename = 'sessionweft_tenants'
+          AND policyname = 'sessionweft_tenant_isolation'
+      ) THEN
+        CREATE POLICY sessionweft_tenant_isolation ON sessionweft_tenants
+          USING (id = NULLIF(current_setting('sessionweft.tenant_id', true), '')::uuid)
+          WITH CHECK (id = NULLIF(current_setting('sessionweft.tenant_id', true), '')::uuid);
+      END IF;
+    END $$"#,
+    r#"DO $$
     DECLARE table_name TEXT;
     BEGIN
       FOREACH table_name IN ARRAY ARRAY[
-        'sessionweft_tenants',
         'sessionweft_tenant_memberships',
         'sessionweft_tenant_quotas',
         'sessionweft_tenant_usage',
