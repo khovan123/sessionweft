@@ -58,6 +58,44 @@ impl GitCliMergeExecutor {
             .map_err(|error| GitOperationError::InvalidOutput(error.to_string()))
     }
 
+    async fn source_worktree_path(
+        &self,
+        entry: &MergeQueueEntry,
+    ) -> Result<String, GitOperationError> {
+        let listing = self
+            .checked([
+                "-C",
+                entry.repository_root.as_str(),
+                "worktree",
+                "list",
+                "--porcelain",
+            ])
+            .await?;
+        let expected_branch = format!("refs/heads/{}", entry.source_branch);
+        for block in listing.split("\n\n") {
+            let mut path = None;
+            let mut branch = None;
+            for line in block.lines() {
+                if let Some(value) = line.strip_prefix("worktree ") {
+                    path = Some(value.to_owned());
+                } else if let Some(value) = line.strip_prefix("branch ") {
+                    branch = Some(value.to_owned());
+                }
+            }
+            if branch.as_deref() == Some(expected_branch.as_str()) {
+                return path.ok_or_else(|| {
+                    GitOperationError::InvalidOutput(
+                        "Git worktree registry entry is missing its path".into(),
+                    )
+                });
+            }
+        }
+        Err(GitOperationError::InvalidOutput(format!(
+            "no registered worktree found for source branch {}",
+            entry.source_branch
+        )))
+    }
+
     async fn target_head(&self, entry: &MergeQueueEntry) -> Result<String, GitOperationError> {
         let reference = format!("refs/heads/{}^{{commit}}", entry.target_branch);
         self.checked([
@@ -71,9 +109,10 @@ impl GitCliMergeExecutor {
     }
 
     async fn source_head(&self, entry: &MergeQueueEntry) -> Result<String, GitOperationError> {
+        let worktree_path = self.source_worktree_path(entry).await?;
         self.checked([
             "-C",
-            entry.worktree_path(),
+            worktree_path.as_str(),
             "rev-parse",
             "--verify",
             "HEAD^{commit}",
@@ -105,11 +144,12 @@ impl GitCliMergeExecutor {
     }
 
     async fn rebase_state_exists(&self, entry: &MergeQueueEntry) -> Result<bool, GitOperationError> {
+        let worktree_path = self.source_worktree_path(entry).await?;
         for state in ["rebase-merge", "rebase-apply"] {
             let path = self
                 .checked([
                     "-C",
-                    entry.worktree_path(),
+                    worktree_path.as_str(),
                     "rev-parse",
                     "--git-path",
                     state,
@@ -123,10 +163,11 @@ impl GitCliMergeExecutor {
     }
 
     async fn abort_rebase(&self, entry: &MergeQueueEntry) -> Result<(), GitOperationError> {
+        let worktree_path = self.source_worktree_path(entry).await?;
         let output = self
             .run([
                 "-C",
-                entry.worktree_path(),
+                worktree_path.as_str(),
                 "rebase",
                 "--abort",
             ])
@@ -139,28 +180,16 @@ impl GitCliMergeExecutor {
     }
 }
 
-trait MergeQueueEntryPath {
-    fn worktree_path(&self) -> &str;
-}
-
-impl MergeQueueEntryPath for MergeQueueEntry {
-    fn worktree_path(&self) -> &str {
-        // The source branch is always backed by the durable worktree record. The current
-        // merge queue snapshot stores the repository root, while the worktree path is
-        // resolved through Git's worktree registry using the source branch.
-        &self.repository_root
-    }
-}
-
 #[async_trait]
 impl GitMergeExecutor for GitCliMergeExecutor {
     async fn inspect(&self, entry: &MergeQueueEntry) -> Result<MergeInspection, GitOperationError> {
         let target_commit = self.target_head(entry).await?;
         let source_commit = self.source_head(entry).await?;
+        let worktree_path = self.source_worktree_path(entry).await?;
         let status = self
             .checked([
                 "-C",
-                entry.worktree_path(),
+                worktree_path.as_str(),
                 "status",
                 "--porcelain=v1",
                 "--untracked-files=all",
@@ -178,10 +207,11 @@ impl GitMergeExecutor for GitCliMergeExecutor {
         entry: &MergeQueueEntry,
         target_commit: &str,
     ) -> Result<RebaseOutcome, GitOperationError> {
+        let worktree_path = self.source_worktree_path(entry).await?;
         let output = self
             .run([
                 "-C",
-                entry.worktree_path(),
+                worktree_path.as_str(),
                 "rebase",
                 target_commit,
             ])
@@ -195,7 +225,7 @@ impl GitMergeExecutor for GitCliMergeExecutor {
         let conflicts = self
             .checked([
                 "-C",
-                entry.worktree_path(),
+                worktree_path.as_str(),
                 "diff",
                 "--name-only",
                 "--diff-filter=U",
@@ -300,7 +330,14 @@ impl GitMergeExecutor for GitCliMergeExecutor {
         &self,
         entry: &MergeQueueEntry,
     ) -> Result<MergeRecoveryObservation, GitOperationError> {
-        if tokio::fs::metadata(entry.worktree_path()).await.is_err() {
+        let worktree_path = match self.source_worktree_path(entry).await {
+            Ok(path) => path,
+            Err(GitOperationError::InvalidOutput(_)) => {
+                return Ok(MergeRecoveryObservation::MissingWorktree);
+            }
+            Err(error) => return Err(error),
+        };
+        if tokio::fs::metadata(&worktree_path).await.is_err() {
             return Ok(MergeRecoveryObservation::MissingWorktree);
         }
         let target_commit = self.target_head(entry).await?;
