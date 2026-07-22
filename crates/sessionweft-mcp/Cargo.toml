@@ -14,13 +14,14 @@ derivable_impls = "allow"
 
 [dependencies]
 async-trait.workspace = true
+chrono.workspace = true
 reqwest.workspace = true
 rmcp.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sessionweft-core = { path = "../sessionweft-core" }
 sessionweft-execution = { path = "../sessionweft-execution" }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
-
-[dev-dependencies]
-serde.workspace = true
+uuid.workspace = true
