@@ -119,12 +119,7 @@ impl GitWorktreeProvisioner for GitCliWorktreeProvisioner {
             return Ok(None);
         }
         let head = self
-            .run_checked([
-                "-C",
-                record.worktree_path.as_str(),
-                "rev-parse",
-                "HEAD",
-            ])
+            .run_checked(["-C", record.worktree_path.as_str(), "rev-parse", "HEAD"])
             .await?;
         if head.is_empty() {
             return Err(GitOperationError::InvalidOutput(
@@ -191,7 +186,11 @@ mod tests {
             .await
             .expect("repository directory");
         run_git(&root, &["init"]).await;
-        run_git(&root, &["config", "user.email", "sessionweft@example.invalid"]).await;
+        run_git(
+            &root,
+            &["config", "user.email", "sessionweft@example.invalid"],
+        )
+        .await;
         run_git(&root, &["config", "user.name", "SessionWeft Test"]).await;
         tokio::fs::write(root.join("README.md"), "SessionWeft\n")
             .await

@@ -227,10 +227,9 @@ impl GitWorktreeRepository for SqliteGitWorktreeRepository {
             .await
             .map_err(backend)?
         {
-            let existing = serde_json::from_str::<GitWorktreeRecord>(
-                row.get::<&str, _>("data_json"),
-            )
-            .map_err(backend)?;
+            let existing =
+                serde_json::from_str::<GitWorktreeRecord>(row.get::<&str, _>("data_json"))
+                    .map_err(backend)?;
             if existing.session_id == request.session_id
                 && existing.agent_id == request.agent_id
                 && existing.workspace_id == request.workspace_id
@@ -443,9 +442,7 @@ mod tests {
 
     use sessionweft_core::SessionId;
     use sessionweft_git::{GitFence, GitWorktreeRepository, WorktreeAllocationRequest};
-    use sessionweft_orchestration::{
-        LockMode, LockRequest, LockResource, OrchestrationService,
-    };
+    use sessionweft_orchestration::{LockMode, LockRequest, LockResource, OrchestrationService};
     use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
 
     use super::*;
@@ -456,10 +453,8 @@ mod tests {
         SessionId,
         Uuid,
     ) {
-        let path = std::env::temp_dir().join(format!(
-            "sessionweft-git-worktree-{}.db",
-            Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("sessionweft-git-worktree-{}.db", Uuid::new_v4()));
         let database_url = format!("sqlite://{}", path.display());
         let orchestration_repository = Arc::new(
             SqliteOrchestrationRepository::connect(&database_url)
@@ -508,12 +503,7 @@ mod tests {
             },
         };
         let first = git
-            .reserve(
-                request.clone(),
-                Utc::now(),
-                Uuid::new_v4(),
-                Some("test"),
-            )
+            .reserve(request.clone(), Utc::now(), Uuid::new_v4(), Some("test"))
             .await
             .expect("reserve");
         let replay = git
@@ -610,12 +600,7 @@ mod tests {
             .expect("abandoned");
         assert_eq!(abandoned.status, GitWorktreeStatus::Abandoned);
         let cleaned = git
-            .mark_cleaned(
-                record.id,
-                Utc::now(),
-                Uuid::new_v4(),
-                Some("test"),
-            )
+            .mark_cleaned(record.id, Utc::now(), Uuid::new_v4(), Some("test"))
             .await
             .expect("cleaned");
         assert_eq!(cleaned.status, GitWorktreeStatus::Cleaned);

@@ -151,9 +151,7 @@ impl GitWorktreeRecord {
     ) -> Result<(), GitWorkspaceError> {
         if !matches!(
             self.status,
-            GitWorktreeStatus::Provisioning
-                | GitWorktreeStatus::Ready
-                | GitWorktreeStatus::Failed
+            GitWorktreeStatus::Provisioning | GitWorktreeStatus::Ready | GitWorktreeStatus::Failed
         ) {
             return Err(GitWorkspaceError::InvalidTransition(format!(
                 "worktree {} cannot be abandoned from {:?}",
@@ -337,13 +335,7 @@ where
         actor_id: Option<&str>,
     ) -> Result<GitWorktreeRecord, GitWorkspaceError> {
         self.repository
-            .mark_abandoned(
-                worktree_id,
-                reason,
-                Utc::now(),
-                correlation_id,
-                actor_id,
-            )
+            .mark_abandoned(worktree_id, reason, Utc::now(), correlation_id, actor_id)
             .await
             .map_err(GitWorkspaceError::Repository)
     }
@@ -483,9 +475,7 @@ fn validate_branch(value: &str) -> Result<(), GitWorkspaceError> {
 fn validate_commit(value: &str) -> Result<(), GitWorkspaceError> {
     let value = value.trim();
     if !(7..=64).contains(&value.len())
-        || !value
-            .chars()
-            .all(|character| character.is_ascii_hexdigit())
+        || !value.chars().all(|character| character.is_ascii_hexdigit())
     {
         return Err(GitWorkspaceError::Validation(
             "commit must be a 7 to 64 character hexadecimal object ID".into(),
@@ -557,7 +547,9 @@ mod tests {
             .mark_ready("abcdef0123456789abcdef0123456789abcdef01", now)
             .expect("ready");
         assert!(record.mark_cleaned(now).is_err());
-        record.mark_abandoned("task cancelled", now).expect("abandon");
+        record
+            .mark_abandoned("task cancelled", now)
+            .expect("abandon");
         record.mark_cleaned(now).expect("clean");
         assert_eq!(record.status, GitWorktreeStatus::Cleaned);
     }
