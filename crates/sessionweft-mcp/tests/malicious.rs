@@ -24,7 +24,12 @@ fn fixture_root(name: &str) -> PathBuf {
     root
 }
 
-fn config(root: &Path, mode: &str, timeout: Duration, max_result_bytes: usize) -> OfficialMcpConfig {
+fn config(
+    root: &Path,
+    mode: &str,
+    timeout: Duration,
+    max_result_bytes: usize,
+) -> OfficialMcpConfig {
     OfficialMcpConfig {
         server_id: "fixture".into(),
         transport: OfficialTransportConfig::Stdio(StdioTransportConfig {
@@ -52,13 +57,9 @@ fn config(root: &Path, mode: &str, timeout: Duration, max_result_bytes: usize) -
 #[tokio::test]
 async fn discovers_and_calls_official_stdio_fixture() {
     let root = fixture_root("normal");
-    let transport = OfficialMcpTransport::new(config(
-        &root,
-        "normal",
-        Duration::from_secs(2),
-        1024,
-    ))
-    .expect("transport");
+    let transport =
+        OfficialMcpTransport::new(config(&root, "normal", Duration::from_secs(2), 1024))
+            .expect("transport");
     let tools = transport.list_tools().await.expect("discover");
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0].name, "fixture.probe");
@@ -81,14 +82,13 @@ async fn discovers_and_calls_official_stdio_fixture() {
 async fn rejects_duplicate_tools_and_schema_spoofing() {
     for (mode, expected_collision) in [("duplicate", true), ("spoof", false)] {
         let root = fixture_root(mode);
-        let transport = OfficialMcpTransport::new(config(
-            &root,
-            mode,
-            Duration::from_secs(2),
-            1024,
-        ))
-        .expect("transport");
-        let error = transport.list_tools().await.expect_err("malicious discovery");
+        let transport =
+            OfficialMcpTransport::new(config(&root, mode, Duration::from_secs(2), 1024))
+                .expect("transport");
+        let error = transport
+            .list_tools()
+            .await
+            .expect_err("malicious discovery");
         if expected_collision {
             assert!(matches!(error, ToolError::InvalidDescriptor(_)));
         } else {
@@ -101,26 +101,17 @@ async fn rejects_duplicate_tools_and_schema_spoofing() {
 #[tokio::test]
 async fn bounds_hanging_and_flooding_plugins() {
     let root = fixture_root("hang");
-    let transport = OfficialMcpTransport::new(config(
-        &root,
-        "hang",
-        Duration::from_millis(150),
-        1024,
-    ))
-    .expect("transport");
+    let transport =
+        OfficialMcpTransport::new(config(&root, "hang", Duration::from_millis(150), 1024))
+            .expect("transport");
     let started = Instant::now();
     assert!(transport.list_tools().await.is_err());
     assert!(started.elapsed() < Duration::from_secs(3));
     fs::remove_dir_all(root).expect("cleanup");
 
     let root = fixture_root("flood");
-    let transport = OfficialMcpTransport::new(config(
-        &root,
-        "flood",
-        Duration::from_secs(2),
-        1024,
-    ))
-    .expect("transport");
+    let transport = OfficialMcpTransport::new(config(&root, "flood", Duration::from_secs(2), 1024))
+        .expect("transport");
     let error = transport
         .call_tool(&ToolInvocation {
             session_id: SessionId::new(),
@@ -139,13 +130,9 @@ async fn bounds_hanging_and_flooding_plugins() {
 #[tokio::test]
 async fn child_environment_does_not_inherit_secrets() {
     let root = fixture_root("secret");
-    let transport = OfficialMcpTransport::new(config(
-        &root,
-        "secret",
-        Duration::from_secs(2),
-        1024,
-    ))
-    .expect("transport");
+    let transport =
+        OfficialMcpTransport::new(config(&root, "secret", Duration::from_secs(2), 1024))
+            .expect("transport");
     let result = transport
         .call_tool(&ToolInvocation {
             session_id: SessionId::new(),
@@ -188,6 +175,10 @@ fn bubblewrap_profile_denies_network_and_limits_filesystem() {
     assert!(!arguments.iter().any(|value| value == "--share-net"));
     assert!(arguments.iter().any(|value| value == "--ro-bind"));
     assert!(arguments.iter().any(|value| value == "--clearenv"));
-    assert!(arguments.windows(2).any(|values| values == ["--setenv", "SAFE_FLAG"]));
+    assert!(
+        arguments
+            .windows(2)
+            .any(|values| { values[0] == "--setenv" && values[1] == "SAFE_FLAG" })
+    );
     fs::remove_dir_all(root).expect("cleanup");
 }

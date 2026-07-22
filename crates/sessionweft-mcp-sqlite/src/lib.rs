@@ -1,13 +1,16 @@
 use std::{str::FromStr, time::Duration as StdDuration};
 
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use sessionweft_core::EventEnvelope;
 use sessionweft_mcp::{
     ConsumeApprovalCommand, IssueApprovalCommand, McpApprovalRecord, McpApprovalRepository,
     McpApprovalRepositoryError,
 };
-use sqlx::{Row, Sqlite, SqlitePool, Transaction, sqlite::SqliteConnectOptions};
+use sqlx::{
+    Row, Sqlite, SqlitePool, Transaction,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -17,12 +20,17 @@ pub struct SqliteMcpApprovalRepository {
 
 impl SqliteMcpApprovalRepository {
     pub async fn connect(database_url: &str) -> Result<Self, McpApprovalRepositoryError> {
+        let is_memory = database_url.contains(":memory:");
         let options = SqliteConnectOptions::from_str(database_url)
             .map_err(backend)?
             .create_if_missing(true)
             .foreign_keys(true)
             .busy_timeout(StdDuration::from_secs(5));
-        let pool = SqlitePool::connect_with(options).await.map_err(backend)?;
+        let pool = SqlitePoolOptions::new()
+            .max_connections(if is_memory { 1 } else { 5 })
+            .connect_with(options)
+            .await
+            .map_err(backend)?;
         let repository = Self { pool };
         repository.migrate().await?;
         Ok(repository)
@@ -82,14 +90,12 @@ impl SqliteMcpApprovalRepository {
         transaction: &mut Transaction<'_, Sqlite>,
         grant_id: Uuid,
     ) -> Result<McpApprovalRecord, McpApprovalRepositoryError> {
-        let row = sqlx::query(
-            "SELECT data_json FROM mcp_approval_grants WHERE grant_id = ?",
-        )
-        .bind(grant_id.to_string())
-        .fetch_optional(&mut **transaction)
-        .await
-        .map_err(backend)?
-        .ok_or(McpApprovalRepositoryError::NotFound(grant_id))?;
+        let row = sqlx::query("SELECT data_json FROM mcp_approval_grants WHERE grant_id = ?")
+            .bind(grant_id.to_string())
+            .fetch_optional(&mut **transaction)
+            .await
+            .map_err(backend)?
+            .ok_or(McpApprovalRepositoryError::NotFound(grant_id))?;
         serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend)
     }
 
@@ -197,7 +203,9 @@ impl McpApprovalRepository for SqliteMcpApprovalRepository {
         let mut record = Self::load(&mut transaction, command.grant_id).await?;
         if record.consumed_at.is_some() {
             transaction.rollback().await.map_err(backend)?;
-            return Err(McpApprovalRepositoryError::AlreadyConsumed(command.grant_id));
+            return Err(McpApprovalRepositoryError::AlreadyConsumed(
+                command.grant_id,
+            ));
         }
         if record.grant.expires_at <= command.consumed_at {
             transaction.rollback().await.map_err(backend)?;
@@ -228,7 +236,9 @@ impl McpApprovalRepository for SqliteMcpApprovalRepository {
         .map_err(backend)?;
         if result.rows_affected() != 1 {
             transaction.rollback().await.map_err(backend)?;
-            return Err(McpApprovalRepositoryError::AlreadyConsumed(command.grant_id));
+            return Err(McpApprovalRepositoryError::AlreadyConsumed(
+                command.grant_id,
+            ));
         }
         Self::insert_event(
             &mut transaction,
@@ -246,13 +256,11 @@ impl McpApprovalRepository for SqliteMcpApprovalRepository {
         &self,
         grant_id: Uuid,
     ) -> Result<Option<McpApprovalRecord>, McpApprovalRepositoryError> {
-        let row = sqlx::query(
-            "SELECT data_json FROM mcp_approval_grants WHERE grant_id = ?",
-        )
-        .bind(grant_id.to_string())
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(backend)?;
+        let row = sqlx::query("SELECT data_json FROM mcp_approval_grants WHERE grant_id = ?")
+            .bind(grant_id.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(backend)?;
         row.map(|row| serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend))
             .transpose()
     }

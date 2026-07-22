@@ -13,9 +13,7 @@ use sessionweft_execution::{
     AgentManifest, AgentRecord, AgentRole, ApprovalGrant, Capability, McpTransport, Permission,
     PolicyConfig, PolicyEngine, RiskLevel, ToolDescriptor, ToolError, ToolInvocation, ToolResult,
 };
-use sessionweft_mcp::{
-    AuditedMcpGateway, IssueApprovalCommand, McpApprovalRepository,
-};
+use sessionweft_mcp::{AuditedMcpGateway, IssueApprovalCommand, McpApprovalRepository};
 use sessionweft_mcp_sqlite::SqliteMcpApprovalRepository;
 use uuid::Uuid;
 

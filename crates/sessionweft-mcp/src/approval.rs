@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sessionweft_core::SessionId;
 use sessionweft_execution::{
-    AgentRecord, ApprovalGrant, McpTransport, PolicyEffect, PolicyEngine, ToolDescriptor, ToolError,
-    ToolInvocation, ToolResult,
+    AgentRecord, ApprovalGrant, McpTransport, PolicyEffect, PolicyEngine, ToolDescriptor,
+    ToolError, ToolInvocation, ToolResult,
 };
 use thiserror::Error;
 use uuid::Uuid;
@@ -197,7 +197,7 @@ pub enum McpApprovalError {
     Validation(String),
 }
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum McpApprovalRepositoryError {
     #[error("MCP approval {0} was not found")]
     NotFound(Uuid),
