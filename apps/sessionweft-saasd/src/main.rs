@@ -12,9 +12,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sessionweft_billing::{
-    BillingPlan, BillingRepository, BillingService, MeterName, PlanId,
-};
+use sessionweft_billing::{BillingPlan, BillingRepository, BillingService, MeterName, PlanId};
 use sessionweft_billing_stripe::{StripeBillingConfig, StripeBillingProvider};
 use sessionweft_control_plane::OperationContext;
 use sessionweft_core::{Session, SessionId};
@@ -62,8 +60,8 @@ async fn main() -> Result<()> {
     if bootstrap_token.len() < 24 {
         anyhow::bail!("SESSIONWEFT_SAAS_BOOTSTRAP_TOKEN must contain at least 24 bytes");
     }
-    let instance_id = env::var("SESSIONWEFT_INSTANCE_ID")
-        .unwrap_or_else(|_| format!("saasd-{}", Uuid::new_v4()));
+    let instance_id =
+        env::var("SESSIONWEFT_INSTANCE_ID").unwrap_or_else(|_| format!("saasd-{}", Uuid::new_v4()));
     let database = SaasPostgresDatabase::connect(&database_url)
         .await
         .context("connect SaaS authority database")?;
@@ -96,10 +94,7 @@ async fn main() -> Result<()> {
         .route("/v2/bootstrap/tenants", post(bootstrap_tenant))
         .route("/v2/tenants/{tenant_id}/tokens", post(issue_token))
         .route("/v2/tenants/{tenant_id}/quotas", put(set_quota))
-        .route(
-            "/v2/tenants/{tenant_id}/sessions",
-            post(create_session),
-        )
+        .route("/v2/tenants/{tenant_id}/sessions", post(create_session))
         .route(
             "/v2/tenants/{tenant_id}/sessions/{session_id}",
             get(get_session),
@@ -125,19 +120,18 @@ async fn main() -> Result<()> {
             "/v2/tenants/{tenant_id}/billing/entitlements/{name}",
             get(get_entitlement),
         )
-        .route(
-            "/v2/tenants/{tenant_id}/billing/usage",
-            post(record_usage),
-        )
+        .route("/v2/tenants/{tenant_id}/billing/usage", post(record_usage))
         .route("/v2/billing/stripe/webhook", post(stripe_webhook))
         .with_state(state)
-        .layer(TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
-            tracing::info_span!(
-                "http_request",
-                method = %request.method(),
-                path = %request.uri().path(),
-            )
-        }))
+        .layer(
+            TraceLayer::new_for_http().make_span_with(|request: &axum::http::Request<_>| {
+                tracing::info_span!(
+                    "http_request",
+                    method = %request.method(),
+                    path = %request.uri().path(),
+                )
+            }),
+        )
         .layer(axum::middleware::from_fn(request_id));
 
     let address = env::var("SESSIONWEFT_SAAS_BIND")
@@ -185,7 +179,8 @@ async fn bootstrap_tenant(
     Json(request): Json<BootstrapTenantRequest>,
 ) -> ApiResult<Json<BootstrapTenantResponse>> {
     require_bootstrap(&state, &headers)?;
-    let owner_principal = PrincipalId::parse(request.owner_principal_id).map_err(ApiError::bad_request)?;
+    let owner_principal =
+        PrincipalId::parse(request.owner_principal_id).map_err(ApiError::bad_request)?;
     let (tenant, owner) = state
         .tenants
         .bootstrap(request.slug, request.display_name, owner_principal)
@@ -208,7 +203,9 @@ async fn bootstrap_tenant(
         .issue(
             tenant.id,
             owner.principal_id.clone(),
-            request.token_label.unwrap_or_else(|| "bootstrap-owner".into()),
+            request
+                .token_label
+                .unwrap_or_else(|| "bootstrap-owner".into()),
             None,
         )
         .await
@@ -243,7 +240,9 @@ async fn issue_token(
     let tenant_id = parse_tenant(&tenant_id)?;
     let context = authenticate(&state, &headers, tenant_id).await?;
     if !context.can_manage_members() {
-        return Err(ApiError::forbidden("membership management requires owner or admin"));
+        return Err(ApiError::forbidden(
+            "membership management requires owner or admin",
+        ));
     }
     let token = state
         .auth
@@ -277,7 +276,9 @@ async fn set_quota(
     let tenant_id = parse_tenant(&tenant_id)?;
     let context = authenticate(&state, &headers, tenant_id).await?;
     if !context.can_manage_billing() {
-        return Err(ApiError::forbidden("quota management requires billing authority"));
+        return Err(ApiError::forbidden(
+            "quota management requires billing authority",
+        ));
     }
     state
         .tenant_repository
@@ -317,7 +318,11 @@ async fn create_session(
         )
         .await
         .map_err(ApiError::from_tenancy)?;
-    let runtime = state.runtimes.runtime(tenant_id).await.map_err(ApiError::internal)?;
+    let runtime = state
+        .runtimes
+        .runtime(tenant_id)
+        .await
+        .map_err(ApiError::internal)?;
     let session = runtime
         .control_plane()
         .create_session(request.title, &operation_context(&context))
@@ -325,7 +330,11 @@ async fn create_session(
         .map_err(ApiError::control_plane)?;
     state
         .tenant_repository
-        .bind_resource(tenant_id, sessionweft_tenancy::ResourceKind::Session, &session.id.to_string())
+        .bind_resource(
+            tenant_id,
+            sessionweft_tenancy::ResourceKind::Session,
+            &session.id.to_string(),
+        )
         .await
         .map_err(ApiError::from_tenancy)?;
     Ok(Json(session))
@@ -339,7 +348,11 @@ async fn get_session(
     let tenant_id = parse_tenant(&tenant_id)?;
     let _context = authenticate(&state, &headers, tenant_id).await?;
     let session_id = parse_session(&session_id)?;
-    let runtime = state.runtimes.runtime(tenant_id).await.map_err(ApiError::internal)?;
+    let runtime = state
+        .runtimes
+        .runtime(tenant_id)
+        .await
+        .map_err(ApiError::internal)?;
     runtime
         .control_plane()
         .get_session(session_id)
@@ -357,10 +370,18 @@ async fn register_agent(
     let tenant_id = parse_tenant(&tenant_id)?;
     let context = authenticate(&state, &headers, tenant_id).await?;
     require_runtime_mutation(&context)?;
-    let runtime = state.runtimes.runtime(tenant_id).await.map_err(ApiError::internal)?;
+    let runtime = state
+        .runtimes
+        .runtime(tenant_id)
+        .await
+        .map_err(ApiError::internal)?;
     runtime
         .control_plane()
-        .register_agent(parse_session(&session_id)?, manifest, &operation_context(&context))
+        .register_agent(
+            parse_session(&session_id)?,
+            manifest,
+            &operation_context(&context),
+        )
         .await
         .map(Json)
         .map_err(ApiError::control_plane)
@@ -375,10 +396,18 @@ async fn create_workflow(
     let tenant_id = parse_tenant(&tenant_id)?;
     let context = authenticate(&state, &headers, tenant_id).await?;
     require_runtime_mutation(&context)?;
-    let runtime = state.runtimes.runtime(tenant_id).await.map_err(ApiError::internal)?;
+    let runtime = state
+        .runtimes
+        .runtime(tenant_id)
+        .await
+        .map_err(ApiError::internal)?;
     runtime
         .control_plane()
-        .create_workflow(parse_session(&session_id)?, definition, &operation_context(&context))
+        .create_workflow(
+            parse_session(&session_id)?,
+            definition,
+            &operation_context(&context),
+        )
         .await
         .map(Json)
         .map_err(ApiError::control_plane)
@@ -394,7 +423,11 @@ async fn acquire_lock(
     let context = authenticate(&state, &headers, tenant_id).await?;
     require_runtime_mutation(&context)?;
     request.session_id = parse_session(&session_id)?;
-    let runtime = state.runtimes.runtime(tenant_id).await.map_err(ApiError::internal)?;
+    let runtime = state
+        .runtimes
+        .runtime(tenant_id)
+        .await
+        .map_err(ApiError::internal)?;
     runtime
         .control_plane()
         .acquire_lock(&request, &operation_context(&context))
@@ -414,7 +447,11 @@ async fn list_locks(
         .get("x-sessionweft-workspace-id")
         .and_then(|value| value.to_str().ok())
         .unwrap_or("default");
-    let runtime = state.runtimes.runtime(tenant_id).await.map_err(ApiError::internal)?;
+    let runtime = state
+        .runtimes
+        .runtime(tenant_id)
+        .await
+        .map_err(ApiError::internal)?;
     runtime
         .control_plane()
         .list_locks(parse_session(&session_id)?, workspace_id)
@@ -432,10 +469,15 @@ async fn upsert_plan(
     let tenant_id = parse_tenant(&tenant_id)?;
     let context = authenticate(&state, &headers, tenant_id).await?;
     if !context.can_manage_billing() {
-        return Err(ApiError::forbidden("plan management requires billing authority"));
+        return Err(ApiError::forbidden(
+            "plan management requires billing authority",
+        ));
     }
     let repository = PostgresBillingRepository::new(state.database.clone(), tenant_id);
-    repository.upsert_plan(&plan).await.map_err(ApiError::billing)?;
+    repository
+        .upsert_plan(&plan)
+        .await
+        .map_err(ApiError::billing)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -455,10 +497,14 @@ async fn create_subscription(
 ) -> ApiResult<Json<sessionweft_billing::Subscription>> {
     let tenant_id = parse_tenant(&tenant_id)?;
     let context = authenticate(&state, &headers, tenant_id).await?;
-    let provider = state.stripe.clone().ok_or_else(|| {
-        ApiError::service_unavailable("Stripe billing adapter is not configured")
-    })?;
-    let repository = Arc::new(PostgresBillingRepository::new(state.database.clone(), tenant_id));
+    let provider = state
+        .stripe
+        .clone()
+        .ok_or_else(|| ApiError::service_unavailable("Stripe billing adapter is not configured"))?;
+    let repository = Arc::new(PostgresBillingRepository::new(
+        state.database.clone(),
+        tenant_id,
+    ));
     BillingService::new(repository, provider)
         .subscribe(
             &context,
@@ -479,10 +525,14 @@ async fn get_entitlement(
 ) -> ApiResult<Json<serde_json::Value>> {
     let tenant_id = parse_tenant(&tenant_id)?;
     let _context = authenticate(&state, &headers, tenant_id).await?;
-    let provider = state.stripe.clone().ok_or_else(|| {
-        ApiError::service_unavailable("Stripe billing adapter is not configured")
-    })?;
-    let repository = Arc::new(PostgresBillingRepository::new(state.database.clone(), tenant_id));
+    let provider = state
+        .stripe
+        .clone()
+        .ok_or_else(|| ApiError::service_unavailable("Stripe billing adapter is not configured"))?;
+    let repository = Arc::new(PostgresBillingRepository::new(
+        state.database.clone(),
+        tenant_id,
+    ));
     let value = BillingService::new(repository, provider)
         .entitlement(tenant_id, &name)
         .await
@@ -506,10 +556,14 @@ async fn record_usage(
 ) -> ApiResult<Json<sessionweft_billing::UsageRecord>> {
     let tenant_id = parse_tenant(&tenant_id)?;
     let context = authenticate(&state, &headers, tenant_id).await?;
-    let provider = state.stripe.clone().ok_or_else(|| {
-        ApiError::service_unavailable("Stripe billing adapter is not configured")
-    })?;
-    let repository = Arc::new(PostgresBillingRepository::new(state.database.clone(), tenant_id));
+    let provider = state
+        .stripe
+        .clone()
+        .ok_or_else(|| ApiError::service_unavailable("Stripe billing adapter is not configured"))?;
+    let repository = Arc::new(PostgresBillingRepository::new(
+        state.database.clone(),
+        tenant_id,
+    ));
     BillingService::new(repository, provider)
         .record_usage(
             &context,
@@ -528,9 +582,10 @@ async fn stripe_webhook(
     headers: HeaderMap,
     body: Bytes,
 ) -> ApiResult<StatusCode> {
-    let provider = state.stripe.clone().ok_or_else(|| {
-        ApiError::service_unavailable("Stripe billing adapter is not configured")
-    })?;
+    let provider = state
+        .stripe
+        .clone()
+        .ok_or_else(|| ApiError::service_unavailable("Stripe billing adapter is not configured"))?;
     let signature = headers
         .get("stripe-signature")
         .and_then(|value| value.to_str().ok())
@@ -563,11 +618,7 @@ async fn authenticate(
     }
     state
         .tenants
-        .context(
-            resolved.tenant_id,
-            &resolved.principal_id,
-            Uuid::new_v4(),
-        )
+        .context(resolved.tenant_id, &resolved.principal_id, Uuid::new_v4())
         .await
         .map_err(ApiError::from_tenancy)
 }
@@ -575,7 +626,10 @@ async fn authenticate(
 fn operation_context(context: &TenantContext) -> OperationContext {
     OperationContext::new(
         context.correlation_id,
-        Some(format!("tenant:{}:{}", context.tenant_id, context.principal_id)),
+        Some(format!(
+            "tenant:{}:{}",
+            context.tenant_id, context.principal_id
+        )),
     )
 }
 
@@ -583,7 +637,9 @@ fn require_runtime_mutation(context: &TenantContext) -> ApiResult<()> {
     if context.can_mutate_runtime() {
         Ok(())
     } else {
-        Err(ApiError::forbidden("tenant role cannot mutate Runtime state"))
+        Err(ApiError::forbidden(
+            "tenant role cannot mutate Runtime state",
+        ))
     }
 }
 
@@ -650,7 +706,9 @@ fn stripe_provider() -> Result<Option<Arc<StripeBillingProvider>>> {
         return Ok(None);
     };
     let webhook_secret = required_env("SESSIONWEFT_STRIPE_WEBHOOK_SECRET")?;
-    let price_ids = parse_plan_map(env::var("SESSIONWEFT_STRIPE_PRICE_IDS_JSON").unwrap_or_else(|_| "{}".into()))?;
+    let price_ids = parse_plan_map(
+        env::var("SESSIONWEFT_STRIPE_PRICE_IDS_JSON").unwrap_or_else(|_| "{}".into()),
+    )?;
     let meter_event_names = parse_meter_map(
         env::var("SESSIONWEFT_STRIPE_METER_EVENTS_JSON").unwrap_or_else(|_| "{}".into()),
     )?;
@@ -710,7 +768,11 @@ impl ApiError {
     }
 
     fn bad_request(error: impl std::fmt::Display) -> Self {
-        Self::new(StatusCode::BAD_REQUEST, "invalid_request", error.to_string())
+        Self::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_request",
+            error.to_string(),
+        )
     }
 
     fn unauthorized(message: impl Into<String>) -> Self {
@@ -730,7 +792,11 @@ impl ApiError {
     }
 
     fn service_unavailable(message: impl Into<String>) -> Self {
-        Self::new(StatusCode::SERVICE_UNAVAILABLE, "service_unavailable", message)
+        Self::new(
+            StatusCode::SERVICE_UNAVAILABLE,
+            "service_unavailable",
+            message,
+        )
     }
 
     fn internal(error: impl std::fmt::Display) -> Self {
@@ -751,9 +817,11 @@ impl ApiError {
             | sessionweft_tenancy::TenancyError::ResourceNotFound { .. } => {
                 Self::not_found_message("tenant resource was not found")
             }
-            sessionweft_tenancy::TenancyError::QuotaExceeded { .. } => {
-                Self::new(StatusCode::TOO_MANY_REQUESTS, "quota_exceeded", error.to_string())
-            }
+            sessionweft_tenancy::TenancyError::QuotaExceeded { .. } => Self::new(
+                StatusCode::TOO_MANY_REQUESTS,
+                "quota_exceeded",
+                error.to_string(),
+            ),
             sessionweft_tenancy::TenancyError::Validation(_) => Self::bad_request(error),
             _ => Self::internal(error),
         }
@@ -765,9 +833,11 @@ impl ApiError {
                 Self::forbidden("billing access denied")
             }
             sessionweft_billing::BillingError::Validation(_) => Self::bad_request(error),
-            sessionweft_billing::BillingError::NoActiveSubscription(_) => {
-                Self::new(StatusCode::PAYMENT_REQUIRED, "subscription_required", error.to_string())
-            }
+            sessionweft_billing::BillingError::NoActiveSubscription(_) => Self::new(
+                StatusCode::PAYMENT_REQUIRED,
+                "subscription_required",
+                error.to_string(),
+            ),
             sessionweft_billing::BillingError::Provider(_)
             | sessionweft_billing::BillingError::ProviderUncertain(_) => {
                 Self::service_unavailable(error.to_string())

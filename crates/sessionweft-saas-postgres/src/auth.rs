@@ -143,7 +143,10 @@ impl PostgresTenantAuthRepository {
         })
     }
 
-    pub async fn resolve(&self, raw_token: &str) -> Result<Option<ResolvedTenantToken>, TenancyError> {
+    pub async fn resolve(
+        &self,
+        raw_token: &str,
+    ) -> Result<Option<ResolvedTenantToken>, TenancyError> {
         if !raw_token.starts_with("swt_") || raw_token.len() > 256 {
             return Ok(None);
         }
@@ -165,9 +168,7 @@ impl PostgresTenantAuthRepository {
         row.map(|row| {
             Ok(ResolvedTenantToken {
                 id: row.try_get("id").map_err(repository_error)?,
-                tenant_id: TenantId::from_uuid(
-                    row.try_get("tenant_id").map_err(repository_error)?,
-                ),
+                tenant_id: TenantId::from_uuid(row.try_get("tenant_id").map_err(repository_error)?),
                 principal_id: PrincipalId::parse(
                     row.try_get::<String, _>("principal_id")
                         .map_err(repository_error)?,
@@ -179,11 +180,7 @@ impl PostgresTenantAuthRepository {
         .transpose()
     }
 
-    pub async fn revoke(
-        &self,
-        tenant_id: TenantId,
-        token_id: Uuid,
-    ) -> Result<bool, TenancyError> {
+    pub async fn revoke(&self, tenant_id: TenantId, token_id: Uuid) -> Result<bool, TenancyError> {
         let mut transaction = self
             .database
             .begin_tenant(tenant_id)
