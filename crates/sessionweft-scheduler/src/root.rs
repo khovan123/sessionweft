@@ -17,7 +17,7 @@ pub use prerequisites::{
 };
 pub use recovery::{SchedulerRecoveryRepository, SchedulerRecoveryService};
 pub use task_execution::{
-    TaskAction, TaskActionRunError, TaskActionRunner, TaskExecutionError, TaskExecutionRecord,
-    TaskExecutionRepository, TaskExecutionService, TaskExecutionSpec, TaskExecutionStatus,
-    ToolExecutionApproval,
+    TASK_EXECUTION_SCHEMA_VERSION, TaskAction, TaskActionRunError, TaskActionRunner,
+    TaskExecutionError, TaskExecutionRecord, TaskExecutionRepository, TaskExecutionService,
+    TaskExecutionSpec, TaskExecutionStatus, ToolExecutionApproval,
 };
