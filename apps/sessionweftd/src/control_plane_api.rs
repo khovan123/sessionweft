@@ -20,10 +20,7 @@ use super::{ApiError, AppState};
 
 pub(super) fn routes() -> Router<AppState> {
     Router::new()
-        .route(
-            "/v1/sessions/{session_id}/agents",
-            post(register_agent),
-        )
+        .route("/v1/sessions/{session_id}/agents", post(register_agent))
         .route(
             "/v1/sessions/{session_id}/agents/{agent_id}",
             get(get_agent),
@@ -40,10 +37,7 @@ pub(super) fn routes() -> Router<AppState> {
             "/v1/sessions/{session_id}/agents/{agent_id}/stop",
             post(stop_agent),
         )
-        .route(
-            "/v1/sessions/{session_id}/workflows",
-            post(create_workflow),
-        )
+        .route("/v1/sessions/{session_id}/workflows", post(create_workflow))
         .route(
             "/v1/sessions/{session_id}/workflows/{workflow_id}",
             get(get_workflow),
@@ -76,10 +70,7 @@ pub(super) fn routes() -> Router<AppState> {
             "/v1/sessions/{session_id}/locks/{lock_id}/release",
             post(release_lock),
         )
-        .route(
-            "/v1/sessions/{session_id}/memories",
-            post(remember),
-        )
+        .route("/v1/sessions/{session_id}/memories", post(remember))
         .route(
             "/v1/sessions/{session_id}/memories/search",
             post(search_memories),
@@ -189,7 +180,14 @@ async fn start_agent(
     Path((session_id, agent_id)): Path<(String, String)>,
     Json(request): Json<VersionRequest>,
 ) -> Result<Json<AgentRecord>, ApiError> {
-    mutate_agent(state, session_id, agent_id, request.expected_version, "start").await
+    mutate_agent(
+        state,
+        session_id,
+        agent_id,
+        request.expected_version,
+        "start",
+    )
+    .await
 }
 
 async fn heartbeat_agent(
@@ -212,7 +210,14 @@ async fn stop_agent(
     Path((session_id, agent_id)): Path<(String, String)>,
     Json(request): Json<VersionRequest>,
 ) -> Result<Json<AgentRecord>, ApiError> {
-    mutate_agent(state, session_id, agent_id, request.expected_version, "stop").await
+    mutate_agent(
+        state,
+        session_id,
+        agent_id,
+        request.expected_version,
+        "stop",
+    )
+    .await
 }
 
 async fn mutate_agent(

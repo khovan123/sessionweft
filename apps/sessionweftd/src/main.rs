@@ -1,3 +1,5 @@
+mod control_plane_api;
+
 use std::{env, net::SocketAddr, sync::Arc, time::Duration};
 
 use anyhow::{Context, bail};
@@ -10,7 +12,11 @@ use axum::{
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
+use sessionweft_control_plane::RuntimeControlPlane;
 use sessionweft_core::{DomainError, MessageRole, Session, SessionId};
+use sessionweft_execution_sqlite::SqliteAgentRepository;
+use sessionweft_knowledge_sqlite::SqliteMemoryRepository;
+use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
 use sessionweft_provider::{EchoProvider, OllamaProvider, ProviderError, ProviderRegistry};
 use sessionweft_runtime::{
     LocalEventTransport, RuntimeError, RuntimeService, run_outbox_publisher,
@@ -23,9 +29,17 @@ use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
+type LocalControlPlane = RuntimeControlPlane<
+    SqliteSessionRepository,
+    SqliteAgentRepository,
+    SqliteOrchestrationRepository,
+    SqliteMemoryRepository,
+>;
+
 #[derive(Clone)]
 struct AppState {
     runtime: RuntimeService<SqliteSessionRepository>,
+    control_plane: Arc<LocalControlPlane>,
     providers: Arc<ProviderRegistry>,
     api_token: Option<Arc<str>>,
 }
@@ -62,6 +76,27 @@ async fn main() -> anyhow::Result<()> {
     );
     let providers = Arc::new(providers);
     let runtime = RuntimeService::new(Arc::clone(&repository), Arc::clone(&providers));
+    let agent_repository = Arc::new(
+        SqliteAgentRepository::connect(&database_url)
+            .await
+            .context("failed to initialize Agent repository")?,
+    );
+    let orchestration_repository = Arc::new(
+        SqliteOrchestrationRepository::connect(&database_url)
+            .await
+            .context("failed to initialize Orchestration repository")?,
+    );
+    let memory_repository = Arc::new(
+        SqliteMemoryRepository::connect(&database_url)
+            .await
+            .context("failed to initialize Memory repository")?,
+    );
+    let control_plane = Arc::new(RuntimeControlPlane::new(
+        runtime.clone(),
+        agent_repository,
+        orchestration_repository,
+        memory_repository,
+    ));
 
     let transport = Arc::new(LocalEventTransport::new(1_024));
     let cancellation = CancellationToken::new();
@@ -74,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState {
         runtime,
+        control_plane,
         providers,
         api_token,
     };
@@ -85,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/sessions/{id}/provider", post(select_provider))
         .route("/v1/sessions/{id}/run", post(run_provider))
         .route("/v1/sessions/{id}/archive", post(archive_session))
+        .merge(control_plane_api::routes())
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
     let app = Router::new()
         .route("/health/live", get(liveness))
