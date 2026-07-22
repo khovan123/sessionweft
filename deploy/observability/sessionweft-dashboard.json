@@ -1,0 +1,52 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Runtime Ready",
+      "id": 1,
+      "gridPos": {"h": 5, "w": 4, "x": 0, "y": 0},
+      "targets": [{"expr": "sessionweft_runtime_ready", "refId": "A"}],
+      "fieldConfig": {"defaults": {"mappings": [{"options": {"0": {"text": "DOWN"}, "1": {"text": "READY"}}, "type": "value"}], "thresholds": {"mode": "absolute", "steps": [{"color": "red", "value": null}, {"color": "green", "value": 1}]}}}
+    },
+    {
+      "type": "timeseries",
+      "title": "Durable Event Backlogs",
+      "id": 2,
+      "gridPos": {"h": 8, "w": 10, "x": 4, "y": 0},
+      "targets": [
+        {"expr": "sessionweft_outbox_pending_events", "legendFormat": "Outbox pending", "refId": "A"},
+        {"expr": "sessionweft_inbox_failed_events", "legendFormat": "Inbox failed", "refId": "B"},
+        {"expr": "sessionweft_jetstream_messages", "legendFormat": "JetStream retained", "refId": "C"}
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Runtime Ownership",
+      "id": 3,
+      "gridPos": {"h": 8, "w": 10, "x": 14, "y": 0},
+      "targets": [
+        {"expr": "sessionweft_active_task_claims", "legendFormat": "Active task claims", "refId": "A"},
+        {"expr": "sessionweft_active_locks", "legendFormat": "Active locks", "refId": "B"}
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "JetStream Consumers",
+      "id": 4,
+      "gridPos": {"h": 5, "w": 4, "x": 0, "y": 5},
+      "targets": [{"expr": "sessionweft_jetstream_consumers", "refId": "A"}]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["sessionweft", "runtime", "release-candidate"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "SessionWeft Production Overview",
+  "uid": "sessionweft-production",
+  "version": 1
+}
