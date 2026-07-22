@@ -435,17 +435,14 @@ fn workflow_node_path(
     node_id: &str,
     operation: &str,
 ) -> String {
-    format!(
-        "/v1/sessions/{session_id}/workflows/{workflow_id}/nodes/{node_id}/{operation}"
-    )
+    format!("/v1/sessions/{session_id}/workflows/{workflow_id}/nodes/{node_id}/{operation}")
 }
 
 async fn read_json(path: PathBuf) -> anyhow::Result<Value> {
     let bytes = tokio::fs::read(&path)
         .await
         .with_context(|| format!("failed to read JSON file {}", path.display()))?;
-    serde_json::from_slice(&bytes)
-        .with_context(|| format!("invalid JSON in {}", path.display()))
+    serde_json::from_slice(&bytes).with_context(|| format!("invalid JSON in {}", path.display()))
 }
 
 fn print_json(value: &Value) -> anyhow::Result<()> {
