@@ -1,0 +1,134 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*-rc.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "RC version, for example v0.1.0-rc.1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+jobs:
+  build-attest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate version and source commit
+        run: |
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "version must match vMAJOR.MINOR.PATCH-rc.NUMBER" >&2
+            exit 1
+          fi
+          git fetch origin main --depth=1
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "release commit is not contained in main" >&2
+            exit 1
+          fi
+          python scripts/hardening/verify_release_gate.py
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: extensions/sessionweft-vscode/package-lock.json
+      - name: Verify source before release build
+        run: cargo test --workspace --locked
+      - name: Build Rust release binaries
+        run: |
+          cargo build --release --locked \
+            -p sessionweftd \
+            -p sessionweft \
+            -p sessionweft-tui
+      - name: Build VS Code extension
+        working-directory: extensions/sessionweft-vscode
+        run: |
+          npm ci
+          npm run check
+          npm run compile
+          mkdir -p ../../dist
+          npx --yes @vscode/vsce@3.9.2 package \
+            --no-dependencies \
+            --out "../../dist/sessionweft-vscode-${VERSION#v}.vsix"
+      - name: Generate CycloneDX release SBOM
+        run: |
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo cyclonedx --manifest-path Cargo.toml --format json --all \
+            --spec-version 1.5 --override-filename sessionweft.cdx.json
+          mapfile -t boms < <(find . -name sessionweft.cdx.json -print | sort)
+          test "${#boms[@]}" -gt 0
+          python scripts/hardening/merge_cyclonedx.py \
+            --output dist/sessionweft-release.cdx.json \
+            "${boms[@]}"
+      - name: Assemble release bundle
+        run: |
+          release="sessionweft-${VERSION#v}-linux-x86_64"
+          mkdir -p "dist/$release/bin" "dist/$release/extension" "dist/$release/sbom"
+          install -m 0755 target/release/sessionweftd "dist/$release/bin/sessionweftd"
+          install -m 0755 target/release/sessionweft "dist/$release/bin/sessionweft"
+          install -m 0755 target/release/sessionweft-tui "dist/$release/bin/sessionweft-tui"
+          cp "dist/sessionweft-vscode-${VERSION#v}.vsix" "dist/$release/extension/"
+          cp dist/sessionweft-release.cdx.json "dist/$release/sbom/"
+          cp README.md LICENSE PROJECT.md "dist/$release/"
+          cp docs/10-deployment/install-upgrade.md "dist/$release/INSTALL-UPGRADE.md"
+          tar --create --gzip --directory dist \
+            --file "dist/$release.tar.gz" "$release"
+          (
+            cd dist
+            sha256sum "$release.tar.gz" \
+              "sessionweft-vscode-${VERSION#v}.vsix" \
+              sessionweft-release.cdx.json > SHA256SUMS
+          )
+      - name: Attest release provenance
+        uses: actions/attest@v4
+        with:
+          subject-checksums: dist/SHA256SUMS
+      - name: Attest bundle SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/sessionweft-${{ env.VERSION && env.VERSION }}-linux-x86_64.tar.gz
+          sbom-path: dist/sessionweft-release.cdx.json
+        continue-on-error: true
+      - name: Attest bundle SBOM with normalized path
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/sessionweft-*.tar.gz
+          sbom-path: dist/sessionweft-release.cdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sessionweft-${{ env.VERSION }}-release
+          path: |
+            dist/sessionweft-*.tar.gz
+            dist/sessionweft-vscode-*.vsix
+            dist/sessionweft-release.cdx.json
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+      - name: Publish GitHub prerelease
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION" \
+            dist/sessionweft-*.tar.gz \
+            dist/sessionweft-vscode-*.vsix \
+            dist/sessionweft-release.cdx.json \
+            dist/SHA256SUMS \
+            --prerelease \
+            --verify-tag \
+            --title "SessionWeft ${VERSION}" \
+            --notes "Release Candidate. GA remains unapproved. Verify SHA256SUMS and GitHub attestations before installation."
