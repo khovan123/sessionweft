@@ -62,39 +62,23 @@ impl GitCliMergeExecutor {
         &self,
         entry: &MergeQueueEntry,
     ) -> Result<String, GitOperationError> {
-        let listing = self
+        let reference = format!("refs/heads/{}", entry.source_branch);
+        let worktree_path = self
             .checked([
                 "-C",
                 entry.repository_root.as_str(),
-                "worktree",
-                "list",
-                "--porcelain",
+                "for-each-ref",
+                "--format=%(worktreepath)",
+                reference.as_str(),
             ])
             .await?;
-        let expected_branch = format!("refs/heads/{}", entry.source_branch);
-        let mut current_path = None;
-        for raw_line in listing.lines() {
-            let line = raw_line.trim_end_matches('\r');
-            if line.is_empty() {
-                current_path = None;
-                continue;
-            }
-            if let Some(value) = line.strip_prefix("worktree ") {
-                current_path = Some(value.to_owned());
-            } else if let Some(value) = line.strip_prefix("branch ") {
-                if value == expected_branch {
-                    return current_path.ok_or_else(|| {
-                        GitOperationError::InvalidOutput(
-                            "Git worktree registry entry is missing its path".into(),
-                        )
-                    });
-                }
-            }
+        if worktree_path.is_empty() {
+            return Err(GitOperationError::InvalidOutput(format!(
+                "no registered worktree found for source branch {}",
+                entry.source_branch
+            )));
         }
-        Err(GitOperationError::InvalidOutput(format!(
-            "no registered worktree found for source branch {}",
-            entry.source_branch
-        )))
+        Ok(worktree_path)
     }
 
     async fn target_head(&self, entry: &MergeQueueEntry) -> Result<String, GitOperationError> {
