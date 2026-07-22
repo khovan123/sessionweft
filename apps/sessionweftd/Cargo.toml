@@ -25,6 +25,7 @@ sessionweft-runtime = { path = "../../crates/sessionweft-runtime" }
 sessionweft-scheduler = { path = "../../crates/sessionweft-scheduler" }
 sessionweft-scheduler-sqlite = { path = "../../crates/sessionweft-scheduler-sqlite" }
 sessionweft-storage = { path = "../../crates/sessionweft-storage" }
+sessionweft-task-runner = { path = "../../crates/sessionweft-task-runner" }
 tokio.workspace = true
 tokio-util.workspace = true
 tower-http.workspace = true
