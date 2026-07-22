@@ -1,0 +1,34 @@
+name: prepare-production-hardening
+
+on:
+  push:
+    branches:
+      - release/production-hardening-v2
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Apply deterministic hardening patch
+        run: |
+          python .github/scripts/patch_production_hardening.py
+          cargo fmt --all
+          cargo generate-lockfile
+      - name: Commit prepared source
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock Cargo.toml apps/sessionweftd crates/sessionweft-observability
+            git commit -m "build: prepare production hardening"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
