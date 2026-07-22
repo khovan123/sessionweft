@@ -1,6 +1,6 @@
 [package]
 name = "sqlx-mysql"
-version = "0.8.5"
+version = "0.8.6"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -9,3 +9,14 @@ publish = false
 
 [lib]
 path = "src/lib.rs"
+
+[features]
+any = []
+bigdecimal = []
+chrono = []
+json = []
+migrate = []
+offline = []
+rust_decimal = []
+time = []
+uuid = []
