@@ -1,4 +1,4 @@
-use std::{path::Path, sync::Arc, time::Duration};
+use std::{path::Path, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -77,8 +77,6 @@ impl PortableWasmSandbox {
         config.epoch_interruption(true);
         config.wasm_multi_memory(false);
         config.wasm_memory64(false);
-        config.wasm_threads(false);
-        config.wasm_reference_types(false);
         config.max_wasm_stack(512 * 1024);
         let engine = Engine::new(&config).map_err(engine_error)?;
         Ok(Self { engine })
@@ -324,7 +322,7 @@ mod tests {
 
     #[tokio::test]
     async fn executes_import_free_plugin() {
-        let bytes = wasmtime::wat2wasm(ECHO).expect("WAT").into_owned();
+        let bytes = wat::parse_str(ECHO).expect("WAT");
         let result = PortableWasmSandbox::new()
             .expect("sandbox")
             .invoke_bytes(manifest(&bytes), bytes, b"hello".to_vec())
@@ -344,7 +342,7 @@ mod tests {
             (func (export "sessionweft_alloc") (param i32) (result i32) (i32.const 0))
             (func (export "sessionweft_invoke_v1") (param i32 i32) (result i64) (i64.const 0)))
         "#;
-        let bytes = wasmtime::wat2wasm(wat).expect("WAT").into_owned();
+        let bytes = wat::parse_str(wat).expect("WAT");
         let error = PortableWasmSandbox::new()
             .expect("sandbox")
             .invoke_bytes(manifest(&bytes), bytes, Vec::new())
@@ -363,7 +361,7 @@ mod tests {
               (loop $forever (br $forever))
               (i64.const 0)))
         "#;
-        let bytes = wasmtime::wat2wasm(wat).expect("WAT").into_owned();
+        let bytes = wat::parse_str(wat).expect("WAT");
         let mut limits = manifest(&bytes);
         limits.fuel = 10_000;
         let error = PortableWasmSandbox::new()
@@ -385,7 +383,7 @@ mod tests {
                 (i64.shl (i64.const 0) (i64.const 32))
                 (i64.const 65535))))
         "#;
-        let bytes = wasmtime::wat2wasm(wat).expect("WAT").into_owned();
+        let bytes = wat::parse_str(wat).expect("WAT");
         let error = PortableWasmSandbox::new()
             .expect("sandbox")
             .invoke_bytes(manifest(&bytes), bytes, Vec::new())
