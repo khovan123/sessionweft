@@ -10,8 +10,12 @@ on:
       - "extensions/sessionweft-vscode/package*.json"
       - "scripts/security/**"
       - "scripts/release/generate-sbom.py"
+      - "release/**"
+      - "docs/09-release/ga-*.md"
       - "deny.toml"
       - ".github/workflows/security-supply-chain.yml"
+      - ".github/workflows/ga-approval.yml"
+      - ".github/workflows/release.yml"
   push:
     branches: [main]
   workflow_dispatch:
@@ -141,7 +145,7 @@ jobs:
         run: |
           python3 scripts/release/generate-sbom.py \
             --output dist/sessionweft.cdx.json \
-            --version 0.1.0-rc.1 \
+            --version 0.1.0 \
             --commit "$GITHUB_SHA"
           python3 - <<'PY'
           import json
