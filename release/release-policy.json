@@ -18,7 +18,7 @@
     "concurrent_sessions": 100,
     "active_agents": 50,
     "queued_tasks": 10000,
-    "indexed_files_per_workspace": 50000,
+    "indexed_files_per_workspace": 10000,
     "event_backlog": 1000000
   },
   "required_gates": [
