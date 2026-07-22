@@ -18,6 +18,22 @@ jobs:
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Materialize dependency lockfile
+        if: github.head_ref == 'release/production-hardening-clean'
+        run: |
+          cargo generate-lockfile
+          if grep -q 'name = "rsa"' Cargo.lock; then
+            echo "rsa remains in Cargo.lock" >&2
+            exit 1
+          fi
+      - name: Upload dependency lockfile
+        if: github.head_ref == 'release/production-hardening-clean'
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-hardening-cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 3
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
