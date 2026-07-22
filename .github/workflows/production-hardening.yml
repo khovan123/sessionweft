@@ -1,0 +1,153 @@
+name: production-hardening
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 2 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-evidence:
+    name: security-and-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Scan committed secrets
+        run: python scripts/hardening/secret_scan.py
+      - name: Audit Rust dependencies
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          cargo audit
+      - name: Generate CycloneDX SBOM
+        run: |
+          cargo install cargo-cyclonedx --version 0.5.9 --locked
+          cargo cyclonedx --manifest-path Cargo.toml --format json --all \
+            --spec-version 1.5 --override-filename sessionweft.cdx.json
+          find . -name sessionweft.cdx.json -print | sort
+          tar --create --gzip --file sessionweft-sbom.tar.gz \
+            $(find . -name sessionweft.cdx.json -print | sort)
+      - name: Validate dashboard JSON
+        run: python -m json.tool deploy/observability/sessionweft-dashboard.json >/dev/null
+      - name: Validate Prometheus rules
+        run: |
+          docker run --rm \
+            --volume "$PWD/deploy/observability:/work:ro" \
+            --entrypoint promtool \
+            prom/prometheus:v3.5.0 \
+            check rules /work/prometheus-rules.yml
+      - name: Verify RC evidence
+        run: python scripts/hardening/verify_release_gate.py
+      - name: Run malicious plugin regression suite
+        run: cargo test -p sessionweft-mcp --test malicious --locked
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sessionweft-cyclonedx-sbom
+          path: sessionweft-sbom.tar.gz
+          retention-days: 14
+
+  service-chaos:
+    name: postgres-jetstream-chaos
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SESSIONWEFT_TEST_POSTGRES_URL: postgres://sessionweft:sessionweft@127.0.0.1:5432/sessionweft
+      SESSIONWEFT_TEST_NATS_URL: nats://127.0.0.1:4222
+      SESSIONWEFT_TEST_NATS_CONTAINER: sessionweft-hardening-nats
+      SESSIONWEFT_POSTGRES_CONTAINER: sessionweft-hardening-postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+      - name: Start PostgreSQL and NATS JetStream
+        run: |
+          docker run --detach --rm --name sessionweft-hardening-postgres \
+            --env POSTGRES_USER=sessionweft \
+            --env POSTGRES_PASSWORD=sessionweft \
+            --env POSTGRES_DB=sessionweft \
+            --publish 5432:5432 \
+            postgres:17-alpine
+          docker run --detach --rm --name sessionweft-hardening-nats \
+            --publish 4222:4222 \
+            --publish 8222:8222 \
+            nats:2.14.1-alpine -js -m 8222
+          for attempt in $(seq 1 40); do
+            if docker exec sessionweft-hardening-postgres \
+              pg_isready -U sessionweft -d sessionweft >/dev/null 2>&1 \
+              && (echo > /dev/tcp/127.0.0.1/4222) >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs sessionweft-hardening-postgres || true
+          docker logs sessionweft-hardening-nats || true
+          exit 1
+      - name: Run multi-Runtime and redelivery tests
+        run: |
+          cargo test -p sessionweft-service-postgres \
+            --test service_mode --locked -- --ignored --test-threads=1
+      - name: Run PostgreSQL failover and corruption drills
+        run: |
+          cargo test -p sessionweft-service-postgres \
+            --test hardening --locked -- --ignored --test-threads=1
+      - name: Run NATS partition recovery drill
+        run: |
+          cargo test -p sessionweft-jetstream \
+            --test hardening --locked -- --ignored --test-threads=1
+      - name: Run isolated PostgreSQL backup and restore drill
+        run: bash scripts/hardening/backup_restore_drill.sh
+      - name: Dependency diagnostics
+        if: failure()
+        run: |
+          docker ps -a
+          docker logs sessionweft-hardening-postgres || true
+          docker logs sessionweft-hardening-nats || true
+      - name: Stop hardening services
+        if: always()
+        run: |
+          docker unpause sessionweft-hardening-nats 2>/dev/null || true
+          docker rm --force sessionweft-hardening-postgres sessionweft-hardening-nats 2>/dev/null || true
+
+  capacity-and-client-safety:
+    name: capacity-and-client-safety
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify observability and provider outage behavior
+        run: |
+          cargo test -p sessionweft-observability --locked
+          cargo test -p sessionweft-runtime --test hardening --locked
+      - name: Run context-cost capacity gate
+        run: |
+          cargo test -p sessionweft-knowledge \
+            --test hardening --locked -- --ignored --test-threads=1
+      - name: Run large-workspace capacity gate
+        run: |
+          cargo test -p sessionweft-workspace-intelligence \
+            --test hardening --locked -- --ignored --test-threads=1
+      - name: Re-run client durability and PTY safety tests
+        run: |
+          cargo test -p sessionweft-client-protocol --locked
+          cargo test -p sessionweft-client-protocol-sqlite --locked
+      - name: Deny new warnings in hardening code
+        run: |
+          cargo clippy \
+            -p sessionweft-observability \
+            -p sessionweft-runtime \
+            -p sessionweft-service-postgres \
+            -p sessionweft-jetstream \
+            -p sessionweft-knowledge \
+            -p sessionweft-workspace-intelligence \
+            --all-targets --locked -- -D warnings
