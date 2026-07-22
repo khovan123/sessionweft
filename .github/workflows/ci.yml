@@ -49,9 +49,10 @@ jobs:
           fi
 
           base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${remote_head}" --jq .tree.sha)"
-          lock_base64="$(base64 -w0 Cargo.lock)"
+          base64 -w0 Cargo.lock > /tmp/Cargo.lock.b64
+          jq -Rs '{content:.,encoding:"base64"}' /tmp/Cargo.lock.b64 > /tmp/blob.json
           blob_sha="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" \
-            -f content="$lock_base64" -f encoding=base64 --jq .sha)"
+            --input /tmp/blob.json --jq .sha)"
 
           jq -n --arg base "$base_tree" --arg blob "$blob_sha" \
             '{base_tree:$base,tree:[{path:"Cargo.lock",mode:"100644",type:"blob",sha:$blob}]}' \
@@ -77,6 +78,7 @@ jobs:
           path: |
             Cargo.lock
             /tmp/finalize-lock.log
+            /tmp/blob.json
             /tmp/tree.json
             /tmp/commit.json
             /tmp/ref.json
