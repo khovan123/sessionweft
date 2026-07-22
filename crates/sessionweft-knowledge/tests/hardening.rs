@@ -1,8 +1,6 @@
 use std::time::{Duration, Instant};
 
-use sessionweft_knowledge::{
-    ContextBudget, ContextBuilder, ContextCandidate, ContextKind,
-};
+use sessionweft_knowledge::{ContextBudget, ContextBuilder, ContextCandidate, ContextKind};
 
 #[test]
 #[ignore = "capacity gate executed by production-hardening workflow"]
@@ -37,7 +35,14 @@ fn assembles_five_thousand_candidates_within_budget_and_latency_target() {
     .expect("context package");
     assert!(started.elapsed() <= Duration::from_secs(5));
     assert!(package.estimated_tokens <= package.usable_budget);
-    assert_eq!(package.items.iter().filter(|item| item.candidate.required).count(), 5);
+    assert_eq!(
+        package
+            .items
+            .iter()
+            .filter(|item| item.candidate.required)
+            .count(),
+        5
+    );
     assert!(!package.omitted.is_empty());
     assert!(
         package
