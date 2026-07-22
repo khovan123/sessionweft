@@ -1,0 +1,50 @@
+name: tenant-schema-patch
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'feature/tenant-runtime-api' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/tenant-runtime-api
+          token: ${{ github.token }}
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Add schema-isolated Runtime database constructor
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('crates/sessionweft-service-postgres/src/database.rs')
+          text = path.read_text()
+          marker = '''    #[must_use]\n    pub fn pool(&self) -> &PgPool {'''
+          insert = '''    pub async fn connect_in_schema(\n        database_url: &str,\n        instance_id: impl Into<String>,\n        schema: &str,\n    ) -> Result<Self, ServiceDatabaseError> {\n        let instance_id = validate_instance_id(instance_id.into())?;\n        validate_schema_name(schema)?;\n        let quoted_schema = format!("\\\"{schema}\\\"");\n        let admin = PgPoolOptions::new()\n            .max_connections(1)\n            .acquire_timeout(Duration::from_secs(10))\n            .connect(database_url)\n            .await?;\n        sqlx::query(&format!("CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))\n            .execute(&admin)\n            .await?;\n        admin.close().await;\n\n        let search_path = format!("SET search_path TO {quoted_schema}, public");\n        let pool = PgPoolOptions::new()\n            .max_connections(20)\n            .acquire_timeout(Duration::from_secs(10))\n            .after_connect(move |connection, _metadata| {\n                let search_path = search_path.clone();\n                Box::pin(async move {\n                    sqlx::Executor::execute(&mut *connection, search_path.as_str()).await?;\n                    Ok(())\n                })\n            })\n            .connect(database_url)\n            .await?;\n        let database = Self {\n            pool,\n            instance_id,\n            outbox_claim_ttl: Duration::from_secs(30),\n        };\n        database.migrate().await?;\n        Ok(database)\n    }\n\n'''
+          if marker not in text:
+              raise SystemExit('database pool marker not found')
+          text = text.replace(marker, insert + marker, 1)
+          old = '''        let instance_id = instance_id.into().trim().to_owned();\n        if instance_id.is_empty() || instance_id.len() > 256 {\n            return Err(ServiceDatabaseError::Validation(\n                "runtime instance ID must be between 1 and 256 bytes".into(),\n            ));\n        }'''
+          text = text.replace(old, '        let instance_id = validate_instance_id(instance_id.into())?;', 1)
+          helper_marker = '''#[derive(Debug, Error)]\npub enum ServiceDatabaseError'''
+          helpers = '''fn validate_instance_id(value: String) -> Result<String, ServiceDatabaseError> {\n    let value = value.trim().to_owned();\n    if value.is_empty() || value.len() > 256 {\n        return Err(ServiceDatabaseError::Validation(\n            "runtime instance ID must be between 1 and 256 bytes".into(),\n        ));\n    }\n    Ok(value)\n}\n\nfn validate_schema_name(value: &str) -> Result<(), ServiceDatabaseError> {\n    if value.len() < 3\n        || value.len() > 63\n        || !value.bytes().all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')\n        || !value.as_bytes().first().is_some_and(u8::is_ascii_lowercase)\n    {\n        return Err(ServiceDatabaseError::Validation(\n            "PostgreSQL schema name must be 3-63 lowercase letters, numbers or underscores and start with a letter".into(),\n        ));\n    }\n    Ok(())\n}\n\n'''
+          if helper_marker not in text:
+              raise SystemExit('error marker not found')
+          text = text.replace(helper_marker, helpers + helper_marker, 1)
+          path.write_text(text)
+          PY
+          cargo fmt --all
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/sessionweft-service-postgres/src/database.rs
+          git commit -m "feat(service): support isolated PostgreSQL Runtime schemas"
+          git push origin HEAD:feature/tenant-runtime-api
