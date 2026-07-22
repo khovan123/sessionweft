@@ -58,10 +58,7 @@ impl PollingTickReport {
 pub trait SchedulerPollingRepository:
     SchedulerRepository + SchedulerRecoveryRepository + SchedulerHandoverRepository
 {
-    async fn pending_handover_claim_ids(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<Uuid>, RepositoryError>;
+    async fn pending_handover_claim_ids(&self, limit: usize) -> Result<Vec<Uuid>, RepositoryError>;
 
     async fn ready_workflows(
         &self,
@@ -105,12 +102,7 @@ where
         let mut report = PollingTickReport::default();
         let recovered = self
             .repository
-            .recover_stale_claims(
-                now,
-                self.config.batch_limit,
-                correlation_id,
-                actor_id,
-            )
+            .recover_stale_claims(now, self.config.batch_limit, correlation_id, actor_id)
             .await
             .map_err(SchedulerError::Repository)?;
         report.stale_claims_recovered = recovered.len();
@@ -144,11 +136,7 @@ where
         for workflow in workflows {
             let agent_ids = self
                 .repository
-                .available_agent_ids(
-                    workflow.session_id,
-                    now,
-                    self.config.batch_limit,
-                )
+                .available_agent_ids(workflow.session_id, now, self.config.batch_limit)
                 .await
                 .map_err(SchedulerError::Repository)?;
             for agent_id in agent_ids {

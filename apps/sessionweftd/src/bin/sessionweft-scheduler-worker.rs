@@ -43,10 +43,7 @@ async fn run(database_url: String, cancellation: CancellationToken) -> anyhow::R
 
     info!(
         operation = "scheduler_start",
-        batch_limit,
-        minimum_backoff,
-        maximum_backoff,
-        "durable scheduler polling started"
+        batch_limit, minimum_backoff, maximum_backoff, "durable scheduler polling started"
     );
     loop {
         if cancellation.is_cancelled() {
@@ -88,7 +85,10 @@ async fn run(database_url: String, cancellation: CancellationToken) -> anyhow::R
             () = tokio::time::sleep(delay) => {}
         }
     }
-    info!(operation = "scheduler_stop", "durable scheduler polling stopped");
+    info!(
+        operation = "scheduler_stop",
+        "durable scheduler polling stopped"
+    );
     Ok(())
 }
 

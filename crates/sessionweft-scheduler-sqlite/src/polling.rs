@@ -13,10 +13,7 @@ use super::{SqliteSchedulerRepository, backend};
 
 #[async_trait]
 impl SchedulerPollingRepository for SqliteSchedulerRepository {
-    async fn pending_handover_claim_ids(
-        &self,
-        limit: usize,
-    ) -> Result<Vec<Uuid>, RepositoryError> {
+    async fn pending_handover_claim_ids(&self, limit: usize) -> Result<Vec<Uuid>, RepositoryError> {
         let rows = sqlx::query(
             r#"
             SELECT released.claim_id, released.data_json AS claim_json,
@@ -43,10 +40,9 @@ impl SchedulerPollingRepository for SqliteSchedulerRepository {
         for row in rows {
             let claim = serde_json::from_str::<TaskClaim>(row.get::<&str, _>("claim_json"))
                 .map_err(backend)?;
-            let workflow = serde_json::from_str::<WorkflowExecution>(
-                row.get::<&str, _>("workflow_json"),
-            )
-            .map_err(backend)?;
+            let workflow =
+                serde_json::from_str::<WorkflowExecution>(row.get::<&str, _>("workflow_json"))
+                    .map_err(backend)?;
             let is_ready = workflow
                 .nodes
                 .get(&claim.node_id)
@@ -79,10 +75,9 @@ impl SchedulerPollingRepository for SqliteSchedulerRepository {
 
         let mut candidates = Vec::with_capacity(rows.len());
         for row in rows {
-            let workflow = serde_json::from_str::<WorkflowExecution>(
-                row.get::<&str, _>("data_json"),
-            )
-            .map_err(backend)?;
+            let workflow =
+                serde_json::from_str::<WorkflowExecution>(row.get::<&str, _>("data_json"))
+                    .map_err(backend)?;
             if !workflow.ready_nodes().is_empty() {
                 candidates.push(ReadyWorkflowCandidate {
                     workflow_id: workflow.id,
@@ -134,9 +129,7 @@ mod tests {
     };
 
     use sessionweft_core::SessionId;
-    use sessionweft_execution::{
-        AgentManifest, AgentRole, AgentService, Capability,
-    };
+    use sessionweft_execution::{AgentManifest, AgentRole, AgentService, Capability};
     use sessionweft_execution_sqlite::SqliteAgentRepository;
     use sessionweft_orchestration::{
         OrchestrationService, WorkflowDefinition, WorkflowNodeDefinition, WorkflowNodeKind,
@@ -245,7 +238,11 @@ mod tests {
             .expect("polling tick");
         assert_eq!(report.ready_claims_created, 1);
         let workflow = SqliteSchedulerRepository::load_workflow(
-            &mut scheduler_repository.pool.begin().await.expect("transaction"),
+            &mut scheduler_repository
+                .pool
+                .begin()
+                .await
+                .expect("transaction"),
             workflow.id,
         )
         .await
