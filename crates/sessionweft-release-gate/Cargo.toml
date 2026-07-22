@@ -14,7 +14,13 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+sessionweft-core = { path = "../sessionweft-core" }
+sessionweft-provider = { path = "../sessionweft-provider" }
+sessionweft-runtime = { path = "../sessionweft-runtime" }
+sessionweft-storage = { path = "../sessionweft-storage" }
 tempfile = "3"
+tokio.workspace = true
+uuid.workspace = true
 
 [[bin]]
 name = "sessionweft-release-gate"
