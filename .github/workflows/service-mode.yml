@@ -1,0 +1,71 @@
+name: service-mode
+
+on:
+  pull_request:
+    paths:
+      - "crates/sessionweft-service-postgres/**"
+      - "crates/sessionweft-jetstream/**"
+      - "deploy/docker-compose.service.yml"
+      - ".github/workflows/service-mode.yml"
+  push:
+    branches: [main]
+    paths:
+      - "crates/sessionweft-service-postgres/**"
+      - "crates/sessionweft-jetstream/**"
+      - "deploy/docker-compose.service.yml"
+      - ".github/workflows/service-mode.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-jetstream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: sessionweft
+          POSTGRES_PASSWORD: sessionweft
+          POSTGRES_DB: sessionweft
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sessionweft -d sessionweft"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      SESSIONWEFT_TEST_POSTGRES_URL: postgres://sessionweft:sessionweft@127.0.0.1:5432/sessionweft
+      SESSIONWEFT_TEST_NATS_URL: nats://127.0.0.1:4222
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Start NATS JetStream
+        run: |
+          docker run --detach --rm --name sessionweft-nats \
+            --publish 4222:4222 \
+            nats:2.14.1-alpine -js
+          for attempt in $(seq 1 30); do
+            if (echo > /dev/tcp/127.0.0.1/4222) >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs sessionweft-nats
+          exit 1
+      - name: Verify service-mode crates
+        run: |
+          cargo clippy -p sessionweft-service-postgres -p sessionweft-jetstream \
+            --all-targets --locked -- -D warnings
+      - name: Run two-Runtime integration tests
+        run: |
+          cargo test -p sessionweft-service-postgres \
+            --test service_mode --locked -- --ignored --test-threads=1
+      - name: NATS diagnostics
+        if: failure()
+        run: docker logs sessionweft-nats || true
