@@ -1396,6 +1396,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "sessionweft-control-plane"
+version = "0.1.0"
+dependencies = [
+ "sessionweft-core",
+ "sessionweft-execution",
+ "sessionweft-execution-sqlite",
+ "sessionweft-knowledge",
+ "sessionweft-knowledge-sqlite",
+ "sessionweft-orchestration",
+ "sessionweft-orchestration-sqlite",
+ "sessionweft-provider",
+ "sessionweft-runtime",
+ "sessionweft-storage",
+ "thiserror",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "sessionweft-core"
 version = "0.1.0"
 dependencies = [
