@@ -2,9 +2,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use sessionweft_core::SessionId;
-use sessionweft_service_postgres::{
-    PostgresServiceDatabase, PostgresSessionRepository,
-};
+use sessionweft_service_postgres::{PostgresServiceDatabase, PostgresSessionRepository};
 use sessionweft_storage::{SessionRepository, StorageError};
 use uuid::Uuid;
 
@@ -101,10 +99,7 @@ async fn migrations_are_idempotent_across_runtime_restart() {
     let restarted = PostgresServiceDatabase::connect(&postgres_url(), &instance)
         .await
         .expect("restart");
-    restarted
-        .migrate()
-        .await
-        .expect("second migration pass");
+    restarted.migrate().await.expect("second migration pass");
     let required_tables = sqlx::query_scalar::<_, String>(
         r#"
         SELECT table_name
