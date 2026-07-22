@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -88,10 +91,13 @@ impl SchedulerPlan {
 
     #[must_use]
     pub fn requirement_for(&self, node_id: &str) -> TaskRequirement {
-        self.requirements.get(node_id).cloned().unwrap_or(TaskRequirement {
-            role: None,
-            capabilities: BTreeSet::new(),
-        })
+        self.requirements
+            .get(node_id)
+            .cloned()
+            .unwrap_or(TaskRequirement {
+                role: None,
+                capabilities: BTreeSet::new(),
+            })
     }
 }
 
@@ -185,7 +191,10 @@ pub struct ClaimState {
 pub trait SchedulerRepository: Send + Sync {
     async fn register_plan(&self, plan: &SchedulerPlan) -> Result<SchedulerPlan, RepositoryError>;
     async fn get_plan(&self, workflow_id: Uuid) -> Result<Option<SchedulerPlan>, RepositoryError>;
-    async fn claim_next(&self, request: &ClaimRequest) -> Result<Option<ClaimState>, RepositoryError>;
+    async fn claim_next(
+        &self,
+        request: &ClaimRequest,
+    ) -> Result<Option<ClaimState>, RepositoryError>;
     async fn complete_claim(
         &self,
         claim_id: Uuid,
@@ -346,10 +355,7 @@ mod tests {
     #[test]
     fn requirements_match_role_and_capabilities() {
         let workflow = workflow();
-        assert_eq!(
-            workflow.nodes["worker"].status,
-            WorkflowNodeStatus::Ready
-        );
+        assert_eq!(workflow.nodes["worker"].status, WorkflowNodeStatus::Ready);
         let agent = AgentRecord {
             schema_version: 1,
             id: Uuid::new_v4(),

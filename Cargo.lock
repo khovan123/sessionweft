@@ -1538,6 +1538,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "sessionweft-scheduler"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "sessionweft-core",
+ "sessionweft-execution",
+ "sessionweft-orchestration",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
+name = "sessionweft-scheduler-sqlite"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde_json",
+ "sessionweft-core",
+ "sessionweft-execution",
+ "sessionweft-execution-sqlite",
+ "sessionweft-orchestration",
+ "sessionweft-orchestration-sqlite",
+ "sessionweft-scheduler",
+ "sqlx",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "sessionweft-storage"
 version = "0.1.0"
 dependencies = [

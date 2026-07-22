@@ -375,12 +375,7 @@ impl SqliteSchedulerRepository {
                 )
                 .map_err(domain)?,
             None => workflow
-                .complete_node(
-                    workflow_version,
-                    &claim.node_id,
-                    correlation_id,
-                    actor_id,
-                )
+                .complete_node(workflow_version, &claim.node_id, correlation_id, actor_id)
                 .map_err(domain)?,
         };
         events.push(
@@ -465,7 +460,10 @@ impl SchedulerRepository for SqliteSchedulerRepository {
             .transpose()
     }
 
-    async fn claim_next(&self, request: &ClaimRequest) -> Result<Option<ClaimState>, RepositoryError> {
+    async fn claim_next(
+        &self,
+        request: &ClaimRequest,
+    ) -> Result<Option<ClaimState>, RepositoryError> {
         let _guard = self.claim_guard.lock().await;
         let mut transaction = self.pool.begin().await.map_err(backend)?;
         let plan = Self::load_plan(&mut transaction, request.workflow_id).await?;
@@ -564,13 +562,8 @@ impl SchedulerRepository for SqliteSchedulerRepository {
         correlation_id: Uuid,
         actor_id: Option<&str>,
     ) -> Result<ClaimState, RepositoryError> {
-        self.finish_claim(
-            claim_id,
-            Some(sanitized_error),
-            correlation_id,
-            actor_id,
-        )
-        .await
+        self.finish_claim(claim_id, Some(sanitized_error), correlation_id, actor_id)
+            .await
     }
 
     async fn get_claim(&self, claim_id: Uuid) -> Result<Option<TaskClaim>, RepositoryError> {
@@ -607,7 +600,10 @@ fn to_i64(value: u64) -> Result<i64, RepositoryError> {
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
+    use std::{
+        collections::{BTreeMap, BTreeSet},
+        sync::Arc,
+    };
 
     use sessionweft_core::SessionId;
     use sessionweft_execution::{AgentManifest, AgentRole, AgentService, Capability};
@@ -627,7 +623,8 @@ mod tests {
         AgentRecord,
         String,
     ) {
-        let path = std::env::temp_dir().join(format!("sessionweft-scheduler-{}.db", Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("sessionweft-scheduler-{}.db", Uuid::new_v4()));
         let database_url = format!("sqlite://{}", path.display());
         let workflow_repository = Arc::new(
             SqliteOrchestrationRepository::connect(&database_url)
@@ -682,7 +679,11 @@ mod tests {
             .expect("agent");
         let agent = agent_service
             .mutate(agent.id, agent.version, |agent| {
-                Ok(vec![agent.start(agent.version, Uuid::new_v4(), Some("test"))?])
+                Ok(vec![agent.start(
+                    agent.version,
+                    Uuid::new_v4(),
+                    Some("test"),
+                )?])
             })
             .await
             .expect("start agent");
@@ -717,12 +718,15 @@ mod tests {
             .expect("claim")
             .expect("ready claim");
         assert_eq!(claimed.claim.status, TaskClaimStatus::Active);
-        assert_eq!(claimed.agent.current_task_id, Some(claimed.claim.task_id.clone()));
-        assert_eq!(claimed.workflow.nodes["worker"].status, WorkflowNodeStatus::Running);
-        assert!(scheduler
-            .claim_next(&request)
-            .await
-            .is_err());
+        assert_eq!(
+            claimed.agent.current_task_id,
+            Some(claimed.claim.task_id.clone())
+        );
+        assert_eq!(
+            claimed.workflow.nodes["worker"].status,
+            WorkflowNodeStatus::Running
+        );
+        assert!(scheduler.claim_next(&request).await.is_err());
 
         let completed = scheduler
             .complete_claim(claimed.claim.id, Uuid::new_v4(), Some("scheduler"))
@@ -741,8 +745,22 @@ mod tests {
 
     #[tokio::test]
     async fn unmatched_capability_leaves_ready_node_unclaimed() {
-        let (scheduler, workflow, mut agent, _path) = setup().await;
-        agent.manifest.capabilities.clear();
+        let (scheduler, workflow, agent, _path) = setup().await;
+        let incompatible_plan = SchedulerPlan::new(
+            &workflow,
+            BTreeMap::from([(
+                "worker".into(),
+                TaskRequirement {
+                    role: Some(AgentRole::Worker),
+                    capabilities: BTreeSet::from([Capability::Network]),
+                },
+            )]),
+        )
+        .expect("incompatible plan");
+        scheduler
+            .register_plan(&incompatible_plan)
+            .await
+            .expect("replace plan");
         let request = ClaimRequest {
             workflow_id: workflow.id,
             agent_id: agent.id,
