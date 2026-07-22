@@ -1544,6 +1544,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "serde",
+ "serde_json",
  "sessionweft-core",
  "sessionweft-execution",
  "sessionweft-orchestration",
@@ -1583,6 +1584,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "sessionweft-task-runner"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde_json",
+ "sessionweft-core",
+ "sessionweft-execution",
+ "sessionweft-provider",
+ "sessionweft-scheduler",
+ "thiserror",
+ "uuid",
+]
+
+[[package]]
 name = "sessionweftd"
 version = "0.1.0"
 dependencies = [
@@ -1604,6 +1620,7 @@ dependencies = [
  "sessionweft-scheduler",
  "sessionweft-scheduler-sqlite",
  "sessionweft-storage",
+ "sessionweft-task-runner",
  "tokio",
  "tokio-util",
  "tower-http",
