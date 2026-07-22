@@ -1,0 +1,32 @@
+name: prepare-git-worktree-allocation
+
+on:
+  push:
+    branches:
+      - implementation/git-worktree-allocation
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - run: |
+          cargo fmt --all
+          cargo generate-lockfile
+      - name: Commit prepared worktree slice
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock Cargo.toml crates/sessionweft-git crates/sessionweft-git-local crates/sessionweft-git-sqlite
+            git commit -m "build: prepare fenced Git worktree allocation"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
