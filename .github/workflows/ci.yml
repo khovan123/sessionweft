@@ -26,6 +26,8 @@ jobs:
           set +e
           {
             python .github/scripts/patch_resumable_clients.py
+            sed -i 's/, PtySystem//' crates/sessionweft-client-protocol/src/pty.rs
+            sed -i 's/Ok(session\.descriptor()?)/session.descriptor()/' crates/sessionweft-client-protocol/src/pty.rs
             cargo fmt --all
             cargo generate-lockfile
           } > patch.log 2>&1
