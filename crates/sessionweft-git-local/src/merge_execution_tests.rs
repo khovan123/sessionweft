@@ -7,10 +7,12 @@ use sessionweft_git::{
     MergeQueueRequest, MergeRecoveryObservation, RebaseOutcome, RollbackOutcome,
     WorktreeAllocationRequest,
 };
-use tokio::process::Command;
+use tokio::{process::Command, sync::Mutex};
 use uuid::Uuid;
 
 use super::GitCliMergeExecutor;
+
+static GIT_MERGE_TEST_LOCK: Mutex<()> = Mutex::const_new(());
 
 struct RepositoryFixture {
     root: std::path::PathBuf,
@@ -135,6 +137,7 @@ impl RepositoryFixture {
 
 #[tokio::test]
 async fn rebases_fast_forwards_recovers_and_rolls_back() {
+    let _guard = GIT_MERGE_TEST_LOCK.lock().await;
     let fixture = RepositoryFixture::new("base\n").await;
     let source_head = fixture
         .source_commit("source.txt", "source\n", "source change")
@@ -201,6 +204,7 @@ async fn rebases_fast_forwards_recovers_and_rolls_back() {
 
 #[tokio::test]
 async fn conflicting_rebase_returns_paths_and_aborts_cleanly() {
+    let _guard = GIT_MERGE_TEST_LOCK.lock().await;
     let fixture = RepositoryFixture::new("base\n").await;
     let source_head = fixture
         .source_commit("shared.txt", "source\n", "source conflict")
