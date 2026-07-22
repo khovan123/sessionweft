@@ -17,4 +17,5 @@ thiserror.workspace = true
 [dev-dependencies]
 chrono.workspace = true
 sessionweft-execution = { path = "../sessionweft-execution" }
+tokio.workspace = true
 uuid.workspace = true
