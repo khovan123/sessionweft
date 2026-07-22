@@ -1,0 +1,33 @@
+[package]
+name = "sessionweft-saasd"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sessionweft-billing = { path = "../../crates/sessionweft-billing" }
+sessionweft-billing-stripe = { path = "../../crates/sessionweft-billing-stripe" }
+sessionweft-control-plane = { path = "../../crates/sessionweft-control-plane" }
+sessionweft-core = { path = "../../crates/sessionweft-core" }
+sessionweft-execution = { path = "../../crates/sessionweft-execution" }
+sessionweft-knowledge = { path = "../../crates/sessionweft-knowledge" }
+sessionweft-orchestration = { path = "../../crates/sessionweft-orchestration" }
+sessionweft-provider = { path = "../../crates/sessionweft-provider" }
+sessionweft-saas-postgres = { path = "../../crates/sessionweft-saas-postgres" }
+sessionweft-tenancy = { path = "../../crates/sessionweft-tenancy" }
+sessionweft-tenant-runtime = { path = "../../crates/sessionweft-tenant-runtime" }
+sha2 = "0.10"
+subtle = "2"
+thiserror.workspace = true
+tokio.workspace = true
+tower-http.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true
