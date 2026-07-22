@@ -181,11 +181,7 @@ async fn tenant_token_is_returned_once_resolved_by_hash_and_revoked() {
     let suffix = Uuid::new_v4().simple().to_string();
     let principal = PrincipalId::parse(format!("token-owner-{suffix}")).expect("principal");
     let (tenant, _) = service
-        .bootstrap(
-            format!("token-{suffix}"),
-            "Token tenant",
-            principal.clone(),
-        )
+        .bootstrap(format!("token-{suffix}"), "Token tenant", principal.clone())
         .await
         .expect("tenant");
     let issued = auth
