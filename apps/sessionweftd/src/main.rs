@@ -1,19 +1,31 @@
+mod client_api;
 mod control_plane_api;
 
-use std::{env, net::SocketAddr, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    env,
+    net::SocketAddr,
+    path::PathBuf,
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::{Context, bail};
 use axum::{
     Json, Router,
     extract::{Path, Query, Request, State},
-    http::{StatusCode, header},
+    http::{Method, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
+use sessionweft_client_protocol::{
+    CLIENT_PROTOCOL_VERSION, EventJournal, JournalEventTransport, PtySupervisor, discover_programs,
+};
+use sessionweft_client_protocol_sqlite::SqliteClientEventJournal;
 use sessionweft_control_plane::RuntimeControlPlane;
-use sessionweft_core::{DomainError, MessageRole, Session, SessionId};
+use sessionweft_core::{DomainError, EventEnvelope, MessageRole, Session, SessionId};
 use sessionweft_execution_sqlite::SqliteAgentRepository;
 use sessionweft_knowledge_sqlite::SqliteMemoryRepository;
 use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
@@ -42,6 +54,8 @@ struct AppState {
     control_plane: Arc<LocalControlPlane>,
     providers: Arc<ProviderRegistry>,
     api_token: Option<Arc<str>>,
+    event_journal: Arc<SqliteClientEventJournal>,
+    pty: Arc<PtySupervisor>,
 }
 
 #[tokio::main]
@@ -64,6 +78,11 @@ async fn main() -> anyhow::Result<()> {
         SqliteSessionRepository::connect(&database_url)
             .await
             .context("failed to initialize Session repository")?,
+    );
+    let event_journal = Arc::new(
+        SqliteClientEventJournal::connect(&database_url)
+            .await
+            .context("failed to initialize client event journal")?,
     );
 
     let mut providers = ProviderRegistry::new();
@@ -98,7 +117,35 @@ async fn main() -> anyhow::Result<()> {
         memory_repository,
     ));
 
-    let transport = Arc::new(LocalEventTransport::new(1_024));
+    let workspace_root = env::var_os("SESSIONWEFT_WORKSPACE_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or(env::current_dir().context("failed to resolve Runtime workspace root")?);
+    let configured_programs = env::var("SESSIONWEFT_PTY_PROGRAMS")
+        .unwrap_or_else(|_| "bash,sh,pwsh,powershell.exe,cmd.exe".into());
+    let program_names = configured_programs
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    let pty = Arc::new(
+        PtySupervisor::new(
+            workspace_root,
+            discover_programs(&program_names),
+            BTreeSet::from([
+                "COLORTERM".into(),
+                "LANG".into(),
+                "LC_ALL".into(),
+                "TERM".into(),
+            ]),
+        )
+        .context("failed to initialize Runtime PTY supervisor")?,
+    );
+
+    let local_transport = Arc::new(LocalEventTransport::new(1_024));
+    let transport = Arc::new(JournalEventTransport::new(
+        Arc::clone(&event_journal),
+        local_transport,
+    ));
     let cancellation = CancellationToken::new();
     let outbox_task = tokio::spawn(run_outbox_publisher(
         Arc::clone(&repository),
@@ -112,6 +159,8 @@ async fn main() -> anyhow::Result<()> {
         control_plane,
         providers,
         api_token,
+        event_journal,
+        pty,
     };
     let protected = Router::new()
         .route("/health/ready", get(readiness))
@@ -122,6 +171,11 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/sessions/{id}/run", post(run_provider))
         .route("/v1/sessions/{id}/archive", post(archive_session))
         .merge(control_plane_api::routes())
+        .merge(client_api::routes())
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            audit_mutations,
+        ))
         .route_layer(middleware::from_fn_with_state(state.clone(), authenticate));
     let app = Router::new()
         .route("/health/live", get(liveness))
@@ -132,7 +186,12 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(address)
         .await
         .with_context(|| format!("failed to bind {address}"))?;
-    info!(operation = "server_start", bind = %address, "SessionWeft Runtime started");
+    info!(
+        operation = "server_start",
+        bind = %address,
+        protocol_version = CLIENT_PROTOCOL_VERSION,
+        "SessionWeft Runtime started"
+    );
 
     let shutdown = shutdown_signal(cancellation.clone());
     let result = axum::serve(listener, app)
@@ -172,7 +231,7 @@ async fn authenticate(State(state): State<AppState>, request: Request, next: Nex
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
-        .is_some_and(|value| value.as_bytes() == expected.as_bytes());
+        .is_some_and(|value| constant_time_eq(value.as_bytes(), expected.as_bytes()));
     if !authorized {
         let correlation_id = Uuid::new_v4();
         warn!(operation = "authorize", correlation_id = %correlation_id, "request denied");
@@ -189,13 +248,66 @@ async fn authenticate(State(state): State<AppState>, request: Request, next: Nex
     next.run(request).await
 }
 
+async fn audit_mutations(
+    State(state): State<AppState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let response = next.run(request).await;
+    if method != Method::GET && response.status().is_success() {
+        let event = EventEnvelope::new(
+            "client.command_completed",
+            session_id_from_path(&path),
+            Uuid::new_v4(),
+            Some("api"),
+            serde_json::json!({
+                "method": method.as_str(),
+                "path": path,
+                "status": response.status().as_u16(),
+            }),
+        );
+        if let Err(error) = state.event_journal.append(&event).await {
+            warn!(operation = "client_command_audit", error = %error, "failed to journal client command");
+        }
+    }
+    response
+}
+
+fn session_id_from_path(path: &str) -> Option<SessionId> {
+    let mut parts = path.split('/');
+    while let Some(part) = parts.next() {
+        if part == "sessions" {
+            return parts.next().and_then(|value| value.parse().ok());
+        }
+    }
+    None
+}
+
+fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    left.iter()
+        .zip(right)
+        .fold(0_u8, |difference, (left, right)| {
+            difference | (left ^ right)
+        })
+        == 0
+}
+
 async fn liveness() -> Json<serde_json::Value> {
-    Json(serde_json::json!({"status": "live"}))
+    Json(serde_json::json!({
+        "status": "live",
+        "protocol_version": CLIENT_PROTOCOL_VERSION,
+    }))
 }
 
 async fn readiness(State(state): State<AppState>) -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "ready",
+        "protocol_version": CLIENT_PROTOCOL_VERSION,
         "providers": state.providers.names(),
     }))
 }
@@ -360,7 +472,7 @@ async fn archive_session(
         .map_err(|error| ApiError::from_runtime(error, correlation_id))
 }
 
-fn parse_session_id(value: &str, correlation_id: Uuid) -> Result<SessionId, ApiError> {
+pub(super) fn parse_session_id(value: &str, correlation_id: Uuid) -> Result<SessionId, ApiError> {
     value.parse().map_err(|_| {
         ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -374,9 +486,11 @@ fn parse_session_id(value: &str, correlation_id: Uuid) -> Result<SessionId, ApiE
 
 #[derive(Debug, Serialize)]
 struct ErrorBody {
+    protocol_version: u32,
     code: &'static str,
     message: String,
     correlation_id: Uuid,
+    retryable: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     committed_version: Option<u64>,
 }
@@ -397,9 +511,11 @@ impl ApiError {
         Self {
             status,
             body: ErrorBody {
+                protocol_version: CLIENT_PROTOCOL_VERSION,
                 code,
                 message: message.into(),
                 correlation_id,
+                retryable: status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS,
                 committed_version,
             },
         }
