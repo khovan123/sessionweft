@@ -1,0 +1,48 @@
+name: phase3-wasm-patch
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'feature/portable-sandbox-certification'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ github.token }}
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Apply Wasmtime 38 API corrections
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          cargo = Path('crates/sessionweft-plugin-wasm/Cargo.toml')
+          cargo_text = cargo.read_text()
+          cargo_text = cargo_text.replace('[dev-dependencies]\nhex = "0.4"\n', '[dev-dependencies]\nhex = "0.4"\nwat = "1"\n')
+          cargo.write_text(cargo_text)
+
+          path = Path('crates/sessionweft-plugin-wasm/src/lib.rs')
+          text = path.read_text()
+          text = text.replace('use std::{path::Path, sync::Arc, time::Duration};', 'use std::{path::Path, time::Duration};')
+          text = text.replace('        config.wasm_threads(false);\n', '')
+          text = text.replace('        config.wasm_reference_types(false);\n', '')
+          text = text.replace('wasmtime::wat2wasm(ECHO).expect("WAT").into_owned()', 'wat::parse_str(ECHO).expect("WAT")')
+          text = text.replace('wasmtime::wat2wasm(wat).expect("WAT").into_owned()', 'wat::parse_str(wat).expect("WAT")')
+          path.write_text(text)
+          PY
+          cargo fmt --all
+          cargo metadata --format-version 1 >/dev/null
+      - name: Commit patch and lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock crates/sessionweft-plugin-wasm/Cargo.toml crates/sessionweft-plugin-wasm/src/lib.rs
+          git commit -m "fix(plugin): align portable sandbox with Wasmtime 38 API"
+          git push origin HEAD:${{ github.head_ref }}
