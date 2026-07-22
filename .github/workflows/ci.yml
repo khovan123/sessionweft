@@ -27,7 +27,8 @@ jobs:
           TARGET_BRANCH: ${{ github.head_ref }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          set -euo pipefail
+          exec > >(tee /tmp/finalize-lock.log) 2>&1
+          set -euxo pipefail
           cargo generate-lockfile
           if grep -q '^name = "rsa"$' Cargo.lock; then
             echo 'rsa must not be present in the finalized lockfile' >&2
@@ -68,6 +69,19 @@ jobs:
           gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${TARGET_BRANCH}" \
             --input /tmp/ref.json >/dev/null
           echo "Finalized Cargo.lock in commit $commit_sha"
+      - name: Upload lockfile finalization diagnostics
+        if: always() && github.event_name == 'pull_request' && github.head_ref == 'release/production-hardening-clean'
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-lock-finalization
+          path: |
+            Cargo.lock
+            /tmp/finalize-lock.log
+            /tmp/tree.json
+            /tmp/commit.json
+            /tmp/ref.json
+          if-no-files-found: warn
+          retention-days: 3
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
