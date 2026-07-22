@@ -77,14 +77,13 @@ impl SchedulerHandoverRepository for SqliteSchedulerRepository {
             ));
         }
 
-        if let Some(active) = Self::active_claim_for_node(
-            &mut transaction,
-            previous.workflow_id,
-            &previous.node_id,
-        )
-        .await?
+        if let Some(active) =
+            Self::active_claim_for_node(&mut transaction, previous.workflow_id, &previous.node_id)
+                .await?
         {
-            return Self::current_state(&mut transaction, active).await.map(Some);
+            return Self::current_state(&mut transaction, active)
+                .await
+                .map(Some);
         }
 
         let plan = Self::load_plan(&mut transaction, previous.workflow_id).await?;
@@ -252,12 +251,7 @@ mod tests {
             heartbeat_timeout_seconds: 5,
         };
         let first = agent_service
-            .register(
-                session_id,
-                manifest("first"),
-                Uuid::new_v4(),
-                Some("test"),
-            )
+            .register(session_id, manifest("first"), Uuid::new_v4(), Some("test"))
             .await
             .expect("first agent");
         let first = agent_service
@@ -350,7 +344,10 @@ mod tests {
             .expect("replacement available");
         assert_eq!(assigned.agent.id, replacement.id);
         assert_eq!(assigned.claim.attempt, 2);
-        assert_ne!(assigned.claim.idempotency_key, first_claim.claim.idempotency_key);
+        assert_ne!(
+            assigned.claim.idempotency_key,
+            first_claim.claim.idempotency_key
+        );
         assert_eq!(
             assigned.workflow.nodes["worker"].status,
             WorkflowNodeStatus::Running
