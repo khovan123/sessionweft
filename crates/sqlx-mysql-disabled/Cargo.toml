@@ -7,5 +7,11 @@ license = "Apache-2.0"
 repository = "https://github.com/khovan123/sessionweft"
 publish = false
 
+[features]
+default = []
+chrono = []
+uuid = []
+json = []
+
 [lib]
 path = "src/lib.rs"
