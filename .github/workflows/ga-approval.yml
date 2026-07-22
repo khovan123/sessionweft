@@ -1,0 +1,93 @@
+name: ga-approval
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/sessionweft-release-gate/**"
+      - "release/ga-policy-0.1.0.json"
+      - "release/evidence/ga-0.1.0.json"
+      - "docs/09-release/ga-*.md"
+      - "scripts/release/**"
+      - ".github/workflows/ga-approval.yml"
+      - ".github/workflows/release.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  general-availability:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify locked source
+        run: |
+          cargo metadata --locked --format-version 1 --no-deps > /dev/null
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+
+      - name: Validate owner authorization and GA scope
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          policy = json.loads(Path("release/ga-policy-0.1.0.json").read_text())
+          evidence = json.loads(Path("release/evidence/ga-0.1.0.json").read_text())
+          assert policy["release"] == "0.1.0"
+          assert evidence["release"] == "0.1.0"
+          assert Path("docs/09-release/ga-authorization.md").is_file()
+          required = {"architecture", "security", "operations"}
+          signoffs = {item["role"]: item for item in evidence["signoffs"]}
+          assert set(signoffs) == required
+          for role in required:
+              item = signoffs[role]
+              assert item["reviewer"] == "khovan123"
+              assert item["human"] is True
+              assert item["decision"] == "approved_for_ga"
+              assert "docs/09-release/ga-authorization.md" in item["evidence"]
+          assert evidence["security_findings"]["critical_open"] == 0
+          assert evidence["security_findings"]["high_open"] == 0
+          PY
+
+      - name: Materialize and evaluate exact-commit GA evidence
+        run: |
+          python3 scripts/release/materialize-evidence.py \
+            --template release/evidence/ga-0.1.0.json \
+            --output release/evidence/ga-verified.json \
+            --commit "$GITHUB_SHA"
+          cargo run -p sessionweft-release-gate --locked -- \
+            --policy release/ga-policy-0.1.0.json \
+            --evidence release/evidence/ga-verified.json \
+            --level ga
+
+      - name: Build GA release package
+        env:
+          RELEASE_EVIDENCE_PATH: release/evidence/ga-verified.json
+        run: bash scripts/release/package.sh 0.1.0
+
+      - name: Upload GA decision evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sessionweft-0.1.0-ga-evidence
+          path: |
+            release/evidence/ga-verified.json
+            docs/09-release/ga-authorization.md
+            docs/09-release/ga-architecture-review.md
+            docs/09-release/ga-security-review.md
+            docs/09-release/ga-operations-review.md
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 90
