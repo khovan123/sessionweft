@@ -1,0 +1,38 @@
+name: prepare-scheduler-claims
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'implementation/durable-scheduler-claims'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Prepare scheduler claim slice
+        run: |
+          python scripts/internal/prepare_scheduler_claims.py
+          rm scripts/internal/prepare_scheduler_claims.py
+          cargo fmt --all
+          cargo generate-lockfile
+      - name: Commit prepared scheduler source
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- Cargo.lock crates/sessionweft-scheduler crates/sessionweft-scheduler-sqlite scripts/internal
+            git commit -m "feat: prepare atomic scheduler claim slice"
+            git push origin HEAD:implementation/durable-scheduler-claims
+          fi
