@@ -32,6 +32,7 @@ use sessionweft_observability::MetricsRegistry;
 use sessionweft_observability::MetricsRegistry;
 use sessionweft_observability::MetricsRegistry;
 use sessionweft_observability::MetricsRegistry;
+use sessionweft_observability::MetricsRegistry;
 use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
 use sessionweft_provider::{EchoProvider, OllamaProvider, ProviderError, ProviderRegistry};
 use sessionweft_runtime::{
@@ -60,6 +61,7 @@ struct AppState {
     api_token: Option<Arc<str>>,
     event_journal: Arc<SqliteClientEventJournal>,
     pty: Arc<PtySupervisor>,
+    metrics: Arc<MetricsRegistry>,
     metrics: Arc<MetricsRegistry>,
     metrics: Arc<MetricsRegistry>,
     metrics: Arc<MetricsRegistry>,
@@ -166,6 +168,7 @@ async fn main() -> anyhow::Result<()> {
     let metrics = Arc::new(MetricsRegistry::new());
     let metrics = Arc::new(MetricsRegistry::new());
     let metrics = Arc::new(MetricsRegistry::new());
+    let metrics = Arc::new(MetricsRegistry::new());
     let state = AppState {
         runtime,
         control_plane,
@@ -177,6 +180,7 @@ async fn main() -> anyhow::Result<()> {
     };
     let protected = Router::new()
         .route("/health/ready", get(readiness))
+        .route("/metrics", get(metrics))
         .route("/metrics", get(metrics))
         .route("/metrics", get(metrics))
         .route("/metrics", get(metrics))
@@ -240,6 +244,26 @@ async fn shutdown_signal(cancellation: CancellationToken) {
         warn!(operation = "shutdown_signal", error = %error, "failed to listen for Ctrl+C");
     }
     cancellation.cancel();
+}
+
+async fn observe_requests(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let method = request.method().as_str().to_owned();
+    let started = Instant::now();
+    let response = next.run(request).await;
+    state
+        .metrics
+        .record_http(&method, response.status().as_u16(), started.elapsed());
+    response
+}
+
+async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
+    (
+        [(
+            header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
+        state.metrics.render_prometheus(),
+    )
 }
 
 async fn observe_requests(State(state): State<AppState>, request: Request, next: Next) -> Response {
