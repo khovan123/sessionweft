@@ -3,9 +3,7 @@ use std::{str::FromStr, time::Duration};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sessionweft_core::EventEnvelope;
-use sessionweft_execution::{
-    AgentRecord, AgentRepository, RepositoryError,
-};
+use sessionweft_execution::{AgentRecord, AgentRepository, RepositoryError};
 use sqlx::{
     Row, Sqlite, SqlitePool, Transaction,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions},
@@ -186,13 +184,12 @@ impl AgentRepository for SqliteAgentRepository {
         .await
         .map_err(backend)?;
         if result.rows_affected() != 1 {
-            let actual = sqlx::query_scalar::<_, i64>(
-                "SELECT version FROM agent_records WHERE id = ?",
-            )
-            .bind(agent.id.to_string())
-            .fetch_optional(&mut *transaction)
-            .await
-            .map_err(backend)?;
+            let actual =
+                sqlx::query_scalar::<_, i64>("SELECT version FROM agent_records WHERE id = ?")
+                    .bind(agent.id.to_string())
+                    .fetch_optional(&mut *transaction)
+                    .await
+                    .map_err(backend)?;
             transaction.rollback().await.map_err(backend)?;
             return match actual {
                 Some(actual) => Err(RepositoryError::VersionConflict {
@@ -230,7 +227,10 @@ impl AgentRepository for SqliteAgentRepository {
                 serde_json::from_str::<AgentRecord>(row.get::<&str, _>("data_json"))
                     .map_err(backend)
             })
-            .filter(|record| record.as_ref().is_err_or(|agent| agent.is_stale_at(now)))
+            .filter(|record| match record {
+                Ok(agent) => agent.is_stale_at(now),
+                Err(_) => true,
+            })
             .collect()
     }
 }
@@ -253,9 +253,7 @@ mod tests {
 
     use chrono::Duration;
     use sessionweft_core::SessionId;
-    use sessionweft_execution::{
-        AgentManifest, AgentRole, AgentService, AgentStatus,
-    };
+    use sessionweft_execution::{AgentManifest, AgentRole, AgentService, AgentStatus};
 
     use super::*;
 
@@ -287,7 +285,11 @@ mod tests {
             .expect("register");
         let agent = service
             .mutate(agent.id, agent.version, |agent| {
-                Ok(vec![agent.start(agent.version, Uuid::new_v4(), Some("test"))?])
+                Ok(vec![agent.start(
+                    agent.version,
+                    Uuid::new_v4(),
+                    Some("test"),
+                )?])
             })
             .await
             .expect("start");
@@ -319,7 +321,11 @@ mod tests {
             .expect("register");
         let agent = service
             .mutate(agent.id, agent.version, |agent| {
-                Ok(vec![agent.start(agent.version, Uuid::new_v4(), Some("test"))?])
+                Ok(vec![agent.start(
+                    agent.version,
+                    Uuid::new_v4(),
+                    Some("test"),
+                )?])
             })
             .await
             .expect("start");
