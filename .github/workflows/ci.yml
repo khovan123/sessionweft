@@ -11,34 +11,13 @@ permissions:
 jobs:
   rust:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Materialize SQLx dependency cleanup
-        if: github.head_ref == 'release/production-hardening'
-        run: |
-          python3 .github/scripts/remove_unused_sqlx_mysql.py
-          cargo fmt --all
-          cargo generate-lockfile
-          if cargo tree -i rsa > rsa-tree.log 2>&1; then
-            cat rsa-tree.log
-            echo "rsa remains in dependency graph" >&2
-            exit 1
-          fi
-          tar -czf sqlx-audit-fix.tar.gz \
-            Cargo.toml Cargo.lock crates/sessionweft-service-postgres/src/database.rs
-      - name: Upload SQLx dependency cleanup
-        if: github.head_ref == 'release/production-hardening'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlx-audit-fix
-          path: sqlx-audit-fix.tar.gz
-          if-no-files-found: error
-          retention-days: 3
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
