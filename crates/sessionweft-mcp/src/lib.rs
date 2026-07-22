@@ -186,7 +186,14 @@ impl OfficialMcpTransport {
     ) -> Result<Vec<ToolDescriptor>, McpAdapterError> {
         let command = build_stdio_command(config)?;
         let transport = TokioChildProcess::new(command).map_err(McpAdapterError::SdkTransport)?;
-        let service = ().serve(transport).await.map_err(sdk_error)?;
+        let service = tokio::select! {
+            () = self.cancellation.cancelled() => return Err(McpAdapterError::Cancelled),
+            result = tokio::time::timeout(self.config.operation_timeout, ().serve(transport)) => {
+                result
+                    .map_err(|_| McpAdapterError::Timeout(self.config.operation_timeout))?
+                    .map_err(sdk_error)?
+            }
+        };
         let info = service.peer_info().ok_or_else(|| {
             McpAdapterError::Protocol("server omitted initialization info".into())
         })?;
@@ -208,7 +215,14 @@ impl OfficialMcpTransport {
         config: &HttpTransportConfig,
     ) -> Result<Vec<ToolDescriptor>, McpAdapterError> {
         let transport = StreamableHttpClientTransport::from_uri(config.endpoint.as_str());
-        let service = ().serve(transport).await.map_err(sdk_error)?;
+        let service = tokio::select! {
+            () = self.cancellation.cancelled() => return Err(McpAdapterError::Cancelled),
+            result = tokio::time::timeout(self.config.operation_timeout, ().serve(transport)) => {
+                result
+                    .map_err(|_| McpAdapterError::Timeout(self.config.operation_timeout))?
+                    .map_err(sdk_error)?
+            }
+        };
         let info = service.peer_info().ok_or_else(|| {
             McpAdapterError::Protocol("server omitted initialization info".into())
         })?;
@@ -233,7 +247,14 @@ impl OfficialMcpTransport {
     ) -> Result<ToolResult, McpAdapterError> {
         let command = build_stdio_command(config)?;
         let transport = TokioChildProcess::new(command).map_err(McpAdapterError::SdkTransport)?;
-        let service = ().serve(transport).await.map_err(sdk_error)?;
+        let service = tokio::select! {
+            () = self.cancellation.cancelled() => return Err(McpAdapterError::Cancelled),
+            result = tokio::time::timeout(self.config.operation_timeout, ().serve(transport)) => {
+                result
+                    .map_err(|_| McpAdapterError::Timeout(self.config.operation_timeout))?
+                    .map_err(sdk_error)?
+            }
+        };
         let info = service.peer_info().ok_or_else(|| {
             McpAdapterError::Protocol("server omitted initialization info".into())
         })?;
@@ -258,7 +279,14 @@ impl OfficialMcpTransport {
         arguments: Map<String, Value>,
     ) -> Result<ToolResult, McpAdapterError> {
         let transport = StreamableHttpClientTransport::from_uri(config.endpoint.as_str());
-        let service = ().serve(transport).await.map_err(sdk_error)?;
+        let service = tokio::select! {
+            () = self.cancellation.cancelled() => return Err(McpAdapterError::Cancelled),
+            result = tokio::time::timeout(self.config.operation_timeout, ().serve(transport)) => {
+                result
+                    .map_err(|_| McpAdapterError::Timeout(self.config.operation_timeout))?
+                    .map_err(sdk_error)?
+            }
+        };
         let info = service.peer_info().ok_or_else(|| {
             McpAdapterError::Protocol("server omitted initialization info".into())
         })?;
