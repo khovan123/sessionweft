@@ -1,0 +1,80 @@
+name: wire-scheduler-polling
+
+on:
+  push:
+    branches:
+      - implementation/scheduler-polling-loop
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Wire daemon lifecycle
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/sessionweftd/src/main.rs')
+          text = path.read_text()
+          if 'mod scheduler_runtime;' not in text:
+              text = text.replace(
+                  'mod control_plane_api;\n',
+                  'mod control_plane_api;\nmod scheduler_runtime;\n',
+                  1,
+              )
+          spawn_marker = '''    let outbox_task = tokio::spawn(run_outbox_publisher(
+              Arc::clone(&repository),
+              transport,
+              cancellation.clone(),
+              Duration::from_millis(100),
+          ));
+          '''.replace('          ', '')
+          spawn_replacement = spawn_marker + '''    let scheduler_task = tokio::spawn(scheduler_runtime::run(
+              database_url.clone(),
+              cancellation.clone(),
+          ));
+          '''.replace('          ', '')
+          if 'let scheduler_task = tokio::spawn' not in text:
+              if spawn_marker not in text:
+                  raise SystemExit('outbox spawn marker not found')
+              text = text.replace(spawn_marker, spawn_replacement, 1)
+          join_marker = '''    if let Err(error) = outbox_task.await {
+              warn!(operation = "outbox_join", error = %error, "outbox task join failed");
+          }
+          '''.replace('          ', '')
+          join_replacement = join_marker + '''    match scheduler_task.await {
+              Ok(Ok(())) => {}
+              Ok(Err(error)) => {
+                  warn!(operation = "scheduler_join", error = %error, "scheduler task failed");
+              }
+              Err(error) => {
+                  warn!(operation = "scheduler_join", error = %error, "scheduler task join failed");
+              }
+          }
+          '''.replace('          ', '')
+          if 'match scheduler_task.await' not in text:
+              if join_marker not in text:
+                  raise SystemExit('outbox join marker not found')
+              text = text.replace(join_marker, join_replacement, 1)
+          path.write_text(text)
+          PY
+          cargo fmt --all
+          cargo generate-lockfile
+      - name: Commit daemon polling wiring
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- Cargo.lock apps/sessionweftd crates/sessionweft-scheduler crates/sessionweft-scheduler-sqlite
+            git commit -m "feat: wire scheduler polling loop into daemon"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
