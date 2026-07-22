@@ -10,5 +10,8 @@ pub use polling::{
     ExponentialBackoff, PollingConfig, PollingTickReport, ReadyWorkflowCandidate,
     SchedulerPollingRepository, SchedulerPollingService,
 };
-pub use prerequisites::{ClaimLockFence, RequiredLock};
+pub use prerequisites::{
+    ClaimLockFence, ClaimLockFenceSnapshot, RequiredLock, SchedulerPrerequisiteRepository,
+    SchedulerPrerequisiteService, TaskLockRequirement,
+};
 pub use recovery::{SchedulerRecoveryRepository, SchedulerRecoveryService};
