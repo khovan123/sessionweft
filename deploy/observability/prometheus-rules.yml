@@ -1,0 +1,95 @@
+groups:
+  - name: sessionweft-runtime
+    interval: 30s
+    rules:
+      - alert: SessionWeftRuntimeDown
+        expr: up{job="sessionweft"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: SessionWeft Runtime is unavailable
+          runbook: docs/09-operations/incident-response.md
+
+      - alert: SessionWeftHighServerErrorRate
+        expr: |
+          (
+            sum(rate(sessionweft_http_requests_total{status=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(sessionweft_http_requests_total[5m])), 0.001)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: SessionWeft HTTP 5xx rate exceeds 5%
+          runbook: docs/09-operations/incident-response.md
+
+      - alert: SessionWeftReadLatencyP99High
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (
+              rate(sessionweft_http_request_duration_seconds_bucket{method="GET"}[5m])
+            )
+          ) > 2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: SessionWeft read p99 exceeds two seconds
+          runbook: docs/09-operations/alerts-and-dashboards.md
+
+      - alert: SessionWeftMutationLatencyP99High
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (le) (
+              rate(sessionweft_http_request_duration_seconds_bucket{method=~"POST|PUT|PATCH|DELETE"}[5m])
+            )
+          ) > 4
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: SessionWeft mutation p99 exceeds four seconds
+          runbook: docs/09-operations/alerts-and-dashboards.md
+
+      - alert: SessionWeftJournalFailure
+        expr: increase(sessionweft_event_journal_failures_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: SessionWeft durable client event journal failed
+          runbook: docs/09-operations/incident-response.md
+
+      - alert: SessionWeftAuthenticationDenialSpike
+        expr: rate(sessionweft_auth_denied_total[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: SessionWeft authentication denials exceed one per second
+          runbook: docs/09-operations/incident-response.md
+
+  - name: sessionweft-dependencies
+    interval: 30s
+    rules:
+      - alert: SessionWeftPostgresExporterDown
+        expr: pg_up{job="sessionweft-postgres"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: SessionWeft PostgreSQL is unavailable
+          runbook: docs/09-operations/backup-restore.md
+
+      - alert: SessionWeftNatsMonitoringDown
+        expr: up{job="sessionweft-nats"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: SessionWeft NATS monitoring endpoint is unavailable
+          runbook: docs/09-operations/incident-response.md
