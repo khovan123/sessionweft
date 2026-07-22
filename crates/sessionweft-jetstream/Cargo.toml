@@ -1,0 +1,24 @@
+[package]
+name = "sessionweft-jetstream"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-nats.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sessionweft-core = { path = "../sessionweft-core" }
+sessionweft-runtime = { path = "../sessionweft-runtime" }
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+sessionweft-service-postgres = { path = "../sessionweft-service-postgres" }
