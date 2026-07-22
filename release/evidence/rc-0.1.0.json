@@ -2,8 +2,8 @@
   "schema_version": 1,
   "product": "SessionWeft",
   "release": "0.1.0-rc.1",
-  "commit": "verified-by-release-candidate-ci-head",
-  "generated_at": "2026-07-22T12:30:00Z",
+  "commit": "TBD",
+  "generated_at": "2026-07-22T00:00:00Z",
   "gates": {
     "rust_quality": {
       "status": "passed",
@@ -33,7 +33,7 @@
     "migration_compatibility": {
       "status": "passed",
       "evidence": ["scripts/drills/migration-compatibility.sh", "docs/10-deployment/upgrade-and-rollback.md"],
-      "notes": "Upgrade, old-binary compatibility window and rollback checks are scripted."
+      "notes": "Upgrade compatibility and rollback checks are scripted."
     },
     "security_audit": {
       "status": "passed",
@@ -52,8 +52,8 @@
     },
     "sbom": {
       "status": "passed",
-      "evidence": [".github/workflows/security-supply-chain.yml", ".github/workflows/release.yml"],
-      "notes": "CycloneDX SBOM is generated for the workspace and attached to release artifacts."
+      "evidence": [".github/workflows/security-supply-chain.yml", ".github/workflows/release.yml", "scripts/release/generate-sbom.py"],
+      "notes": "A CycloneDX SBOM is generated from the locked Rust and VS Code manifests."
     },
     "release_artifacts": {
       "status": "passed",
@@ -83,7 +83,7 @@
       "reviewer": "sessionweft-automation",
       "human": false,
       "decision": "approved_for_rc",
-      "reviewed_at": "2026-07-22T12:30:00Z",
+      "reviewed_at": "2026-07-22T00:00:00Z",
       "evidence": ["docs/02-architecture/baseline-v1.md", "docs/09-release/architecture-signoff.md"]
     },
     {
@@ -91,7 +91,7 @@
       "reviewer": "sessionweft-automation",
       "human": false,
       "decision": "approved_for_rc",
-      "reviewed_at": "2026-07-22T12:30:00Z",
+      "reviewed_at": "2026-07-22T00:00:00Z",
       "evidence": ["docs/08-security/threat-model.md", "docs/09-release/security-signoff.md"]
     },
     {
@@ -99,7 +99,7 @@
       "reviewer": "sessionweft-automation",
       "human": false,
       "decision": "approved_for_rc",
-      "reviewed_at": "2026-07-22T12:30:00Z",
+      "reviewed_at": "2026-07-22T00:00:00Z",
       "evidence": ["docs/10-deployment/service-mode-operations.md", "docs/09-release/operations-signoff.md"]
     }
   ]
