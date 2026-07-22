@@ -1,4 +1,7 @@
-use std::{sync::Arc, time::{Duration, Instant}};
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use async_trait::async_trait;
 use sessionweft_core::{ProviderRequest, ProviderResponse, ProviderUsage};
@@ -98,7 +101,10 @@ async fn provider_outage_preserves_committed_input_and_returns_within_timeout_bu
         .expect("recovered Session");
     assert_eq!(recovered.version, 2);
     assert_eq!(recovered.messages.len(), 1);
-    assert_eq!(recovered.messages[0].content, "persist before external call");
+    assert_eq!(
+        recovered.messages[0].content,
+        "persist before external call"
+    );
 }
 
 #[tokio::test]
@@ -132,5 +138,8 @@ async fn healthy_provider_stays_within_synthetic_latency_budget() {
         .await
         .expect("provider completion");
     assert!(started.elapsed() <= Duration::from_secs(1));
-    assert_eq!(completed.messages.last().expect("assistant").content, "healthy response");
+    assert_eq!(
+        completed.messages.last().expect("assistant").content,
+        "healthy response"
+    );
 }
