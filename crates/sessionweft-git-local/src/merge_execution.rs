@@ -72,22 +72,23 @@ impl GitCliMergeExecutor {
             ])
             .await?;
         let expected_branch = format!("refs/heads/{}", entry.source_branch);
-        for block in listing.split("\n\n") {
-            let mut path = None;
-            let mut branch = None;
-            for line in block.lines() {
-                if let Some(value) = line.strip_prefix("worktree ") {
-                    path = Some(value.to_owned());
-                } else if let Some(value) = line.strip_prefix("branch ") {
-                    branch = Some(value.to_owned());
-                }
+        let mut current_path = None;
+        for raw_line in listing.lines() {
+            let line = raw_line.trim_end_matches('\r');
+            if line.is_empty() {
+                current_path = None;
+                continue;
             }
-            if branch.as_deref() == Some(expected_branch.as_str()) {
-                return path.ok_or_else(|| {
-                    GitOperationError::InvalidOutput(
-                        "Git worktree registry entry is missing its path".into(),
-                    )
-                });
+            if let Some(value) = line.strip_prefix("worktree ") {
+                current_path = Some(value.to_owned());
+            } else if let Some(value) = line.strip_prefix("branch ") {
+                if value == expected_branch {
+                    return current_path.ok_or_else(|| {
+                        GitOperationError::InvalidOutput(
+                            "Git worktree registry entry is missing its path".into(),
+                        )
+                    });
+                }
             }
         }
         Err(GitOperationError::InvalidOutput(format!(
