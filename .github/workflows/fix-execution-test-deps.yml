@@ -1,0 +1,61 @@
+name: fix-execution-test-deps
+
+on:
+  push:
+    branches:
+      - implementation/provider-tool-execution-ledger
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Fix test dependencies and imports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          cargo = Path('crates/sessionweft-task-runner/Cargo.toml')
+          text = cargo.read_text()
+          marker = '[dev-dependencies]\nchrono.workspace = true\n'
+          replacement = '[dev-dependencies]\nchrono.workspace = true\ntokio.workspace = true\n'
+          if 'tokio.workspace = true' not in text.split('[dev-dependencies]', 1)[1]:
+              if marker not in text:
+                  raise SystemExit('task runner dev dependency marker not found')
+              text = text.replace(marker, replacement, 1)
+          cargo.write_text(text)
+
+          tests = Path('crates/sessionweft-scheduler-sqlite/src/task_execution_tests.rs')
+          text = tests.read_text()
+          old = '''    ClaimRequest, RequiredLock, SchedulerPlan, SchedulerPrerequisiteRepository,
+    SchedulerPrerequisiteService, SchedulerService, TaskAction, TaskExecutionRepository,
+'''
+          new = '''    ClaimRequest, RequiredLock, SchedulerPlan, SchedulerPollingRepository,
+    SchedulerPrerequisiteRepository, SchedulerPrerequisiteService, SchedulerService, TaskAction,
+    TaskExecutionRepository,
+'''
+          if 'SchedulerPollingRepository' not in text:
+              if old not in text:
+                  raise SystemExit('scheduler test import marker not found')
+              text = text.replace(old, new, 1)
+          tests.write_text(text)
+          PY
+          cargo fmt --all
+          cargo generate-lockfile
+      - name: Commit test dependency fixes
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock crates/sessionweft-task-runner/Cargo.toml crates/sessionweft-scheduler-sqlite/src/task_execution_tests.rs
+            git commit -m "fix: add execution test dependencies"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
