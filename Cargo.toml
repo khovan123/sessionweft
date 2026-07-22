@@ -25,6 +25,7 @@ members = [
   "crates/sessionweft-client-protocol",
   "crates/sessionweft-client-protocol-sqlite",
   "crates/sessionweft-release-gate",
+  "crates/sqlx-mysql-disabled",
   "apps/sessionweftd",
   "apps/sessionweft-cli",
   "apps/sessionweft-tui",
@@ -70,3 +71,6 @@ tree-sitter-python = "0.25.0"
 tree-sitter-rust = "0.24.2"
 tree-sitter-typescript = "0.23.2"
 uuid = { version = "1", features = ["serde", "v4"] }
+
+[patch.crates-io]
+sqlx-mysql = { path = "crates/sqlx-mysql-disabled" }
