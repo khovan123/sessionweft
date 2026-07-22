@@ -6,8 +6,8 @@ use sessionweft_core::SessionId;
 use uuid::Uuid;
 
 use super::{
-    ClaimRequest, HandoverRequest, RepositoryError, SchedulerError, SchedulerHandoverRepository,
-    SchedulerRecoveryRepository, SchedulerRepository,
+    ClaimRequest, HandoverRequest, RepositoryError, SchedulerError,
+    SchedulerPrerequisiteRepository, SchedulerRecoveryRepository,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,7 +56,7 @@ impl PollingTickReport {
 
 #[async_trait]
 pub trait SchedulerPollingRepository:
-    SchedulerRepository + SchedulerRecoveryRepository + SchedulerHandoverRepository
+    SchedulerRecoveryRepository + SchedulerPrerequisiteRepository
 {
     async fn pending_handover_claim_ids(&self, limit: usize) -> Result<Vec<Uuid>, RepositoryError>;
 
@@ -115,7 +115,7 @@ where
         for previous_claim_id in released_claims {
             let handover = self
                 .repository
-                .handover_released_claim(&HandoverRequest {
+                .handover_released_claim_guarded(&HandoverRequest {
                     previous_claim_id,
                     now,
                     correlation_id,
@@ -142,12 +142,15 @@ where
             for agent_id in agent_ids {
                 let claimed = self
                     .repository
-                    .claim_next(&ClaimRequest {
-                        workflow_id: workflow.workflow_id,
-                        agent_id,
-                        correlation_id,
-                        actor_id: actor_id.map(str::to_owned),
-                    })
+                    .claim_next_guarded(
+                        &ClaimRequest {
+                            workflow_id: workflow.workflow_id,
+                            agent_id,
+                            correlation_id,
+                            actor_id: actor_id.map(str::to_owned),
+                        },
+                        now,
+                    )
                     .await
                     .map_err(SchedulerError::Repository)?;
                 if claimed.is_some() {
