@@ -22,8 +22,8 @@ async fn tenant_runtime_schema_isolation_survives_manager_restart() {
     let tenant_a = TenantId::new();
     let tenant_b = TenantId::new();
     let database_url = postgres_url();
-    let manager = TenantRuntimeManager::new(&database_url, "isolation-a", providers())
-        .expect("manager");
+    let manager =
+        TenantRuntimeManager::new(&database_url, "isolation-a", providers()).expect("manager");
 
     let runtime_a = manager.runtime(tenant_a).await.expect("tenant A Runtime");
     let runtime_b = manager.runtime(tenant_b).await.expect("tenant B Runtime");
