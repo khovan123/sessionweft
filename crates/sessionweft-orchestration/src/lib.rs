@@ -800,6 +800,15 @@ pub trait OrchestrationRepository: Send + Sync {
         actor_id: Option<&str>,
     ) -> Result<LockLease, RepositoryError>;
 
+    async fn get_lock(&self, lock_id: Uuid) -> Result<Option<LockLease>, RepositoryError>;
+
+    async fn list_session_locks(
+        &self,
+        session_id: SessionId,
+        workspace_id: &str,
+        now: DateTime<Utc>,
+    ) -> Result<Vec<LockLease>, RepositoryError>;
+
     async fn heartbeat_lock(
         &self,
         lock_id: Uuid,
@@ -982,6 +991,24 @@ where
         request.validate()?;
         self.repository
             .acquire_lock(request, correlation_id, actor_id)
+            .await
+            .map_err(OrchestrationError::Repository)
+    }
+
+    pub async fn get_lock(&self, lock_id: Uuid) -> Result<Option<LockLease>, OrchestrationError> {
+        self.repository
+            .get_lock(lock_id)
+            .await
+            .map_err(OrchestrationError::Repository)
+    }
+
+    pub async fn list_session_locks(
+        &self,
+        session_id: SessionId,
+        workspace_id: &str,
+    ) -> Result<Vec<LockLease>, OrchestrationError> {
+        self.repository
+            .list_session_locks(session_id, workspace_id, Utc::now())
             .await
             .map_err(OrchestrationError::Repository)
     }

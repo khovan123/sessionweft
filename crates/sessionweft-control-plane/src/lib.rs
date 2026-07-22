@@ -331,13 +331,17 @@ where
     pub async fn heartbeat_lock(
         &self,
         session_id: SessionId,
+        workspace_id: &str,
         lock_id: Uuid,
         owner_id: &str,
         fencing_token: u64,
         ttl_seconds: u32,
         context: &OperationContext,
     ) -> Result<LockLease, ControlPlaneError> {
-        self.ensure_session(session_id).await?;
+        let lease = self
+            .require_session_lock(session_id, workspace_id, lock_id)
+            .await?;
+        ensure_lock_authority(&lease, owner_id, fencing_token)?;
         self.orchestration
             .heartbeat_lock(
                 lock_id,
@@ -354,12 +358,16 @@ where
     pub async fn release_lock(
         &self,
         session_id: SessionId,
+        workspace_id: &str,
         lock_id: Uuid,
         owner_id: &str,
         fencing_token: u64,
         context: &OperationContext,
     ) -> Result<(), ControlPlaneError> {
-        self.ensure_session(session_id).await?;
+        let lease = self
+            .require_session_lock(session_id, workspace_id, lock_id)
+            .await?;
+        ensure_lock_authority(&lease, owner_id, fencing_token)?;
         self.orchestration
             .release_lock(
                 lock_id,
@@ -379,7 +387,7 @@ where
     ) -> Result<Vec<LockLease>, ControlPlaneError> {
         self.ensure_session(session_id).await?;
         self.orchestration
-            .list_locks(workspace_id)
+            .list_session_locks(session_id, workspace_id)
             .await
             .map_err(ControlPlaneError::Orchestration)
     }
@@ -425,9 +433,46 @@ where
             .map_err(ControlPlaneError::Knowledge)
     }
 
+    async fn require_session_lock(
+        &self,
+        session_id: SessionId,
+        workspace_id: &str,
+        lock_id: Uuid,
+    ) -> Result<LockLease, ControlPlaneError> {
+        self.ensure_session(session_id).await?;
+        let lease = self
+            .orchestration
+            .get_lock(lock_id)
+            .await
+            .map_err(ControlPlaneError::Orchestration)?
+            .ok_or(ControlPlaneError::LockNotFound(lock_id))?;
+        ensure_scope("lock", session_id, lease.session_id)?;
+        if lease.resource.workspace_id() != workspace_id {
+            return Err(ControlPlaneError::LockWorkspaceMismatch {
+                lock_id,
+                expected: workspace_id.to_owned(),
+                actual: lease.resource.workspace_id().to_owned(),
+            });
+        }
+        Ok(lease)
+    }
+
     async fn ensure_session(&self, session_id: SessionId) -> Result<(), ControlPlaneError> {
         self.get_session(session_id).await.map(|_| ())
     }
+}
+
+fn ensure_lock_authority(
+    lease: &LockLease,
+    owner_id: &str,
+    fencing_token: u64,
+) -> Result<(), ControlPlaneError> {
+    if lease.owner_id == owner_id && lease.fencing_token == fencing_token {
+        return Ok(());
+    }
+    Err(ControlPlaneError::LockAuthorityMismatch {
+        lock_id: lease.lock_id,
+    })
 }
 
 fn ensure_scope(
@@ -455,6 +500,16 @@ pub enum ControlPlaneError {
     Orchestration(OrchestrationError),
     #[error("knowledge operation failed: {0}")]
     Knowledge(KnowledgeError),
+    #[error("lock {0} not found")]
+    LockNotFound(Uuid),
+    #[error("lock {lock_id} belongs to workspace '{actual}', expected '{expected}'")]
+    LockWorkspaceMismatch {
+        lock_id: Uuid,
+        expected: String,
+        actual: String,
+    },
+    #[error("lock {lock_id} owner or fencing token does not match")]
+    LockAuthorityMismatch { lock_id: Uuid },
     #[error("{resource} belongs to session {actual}, expected session {expected}")]
     SessionScopeMismatch {
         resource: &'static str,
@@ -598,6 +653,7 @@ mod tests {
         let lease = control_plane
             .heartbeat_lock(
                 session.id,
+                "workspace",
                 lease.lock_id,
                 &lease.owner_id,
                 lease.fencing_token,
@@ -617,6 +673,7 @@ mod tests {
         control_plane
             .release_lock(
                 session.id,
+                "workspace",
                 lease.lock_id,
                 &lease.owner_id,
                 lease.fencing_token,
@@ -674,6 +731,78 @@ mod tests {
             .await
             .expect("search deleted memory");
         assert!(hits.is_empty());
+    }
+
+    #[tokio::test]
+    async fn cross_session_lock_access_is_denied() {
+        let control_plane = control_plane().await;
+        let context = OperationContext::system("test");
+        let session_a = control_plane
+            .create_session("session-a", &context)
+            .await
+            .expect("session a");
+        let session_b = control_plane
+            .create_session("session-b", &context)
+            .await
+            .expect("session b");
+        let lease = control_plane
+            .acquire_lock(
+                &LockRequest {
+                    session_id: session_a.id,
+                    owner_id: "worker-a".into(),
+                    resource: LockResource::Workspace {
+                        workspace_id: "shared".into(),
+                    },
+                    mode: LockMode::Exclusive,
+                    ttl_seconds: 30,
+                },
+                &context,
+            )
+            .await
+            .expect("session a lock");
+
+        assert!(
+            control_plane
+                .list_locks(session_b.id, "shared")
+                .await
+                .expect("session b lock list")
+                .is_empty()
+        );
+        assert!(matches!(
+            control_plane
+                .heartbeat_lock(
+                    session_b.id,
+                    "shared",
+                    lease.lock_id,
+                    &lease.owner_id,
+                    lease.fencing_token,
+                    30,
+                    &context,
+                )
+                .await,
+            Err(ControlPlaneError::SessionScopeMismatch { .. })
+        ));
+        assert!(matches!(
+            control_plane
+                .release_lock(
+                    session_b.id,
+                    "shared",
+                    lease.lock_id,
+                    &lease.owner_id,
+                    lease.fencing_token,
+                    &context,
+                )
+                .await,
+            Err(ControlPlaneError::SessionScopeMismatch { .. })
+        ));
+        assert_eq!(
+            control_plane
+                .list_locks(session_a.id, "shared")
+                .await
+                .expect("session a lock list")
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]

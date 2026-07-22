@@ -374,6 +374,40 @@ impl OrchestrationRepository for SqliteOrchestrationRepository {
         Ok(lease)
     }
 
+    async fn get_lock(&self, lock_id: Uuid) -> Result<Option<LockLease>, RepositoryError> {
+        let row = sqlx::query("SELECT data_json FROM lock_leases WHERE lock_id = ?")
+            .bind(lock_id.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(backend)?;
+        row.map(|row| serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend))
+            .transpose()
+    }
+
+    async fn list_session_locks(
+        &self,
+        session_id: sessionweft_core::SessionId,
+        workspace_id: &str,
+        now: chrono::DateTime<Utc>,
+    ) -> Result<Vec<LockLease>, RepositoryError> {
+        let rows = sqlx::query(
+            r#"
+            SELECT data_json FROM lock_leases
+            WHERE session_id = ? AND workspace_id = ? AND expires_at > ?
+            ORDER BY fencing_token ASC
+            "#,
+        )
+        .bind(session_id.to_string())
+        .bind(workspace_id)
+        .bind(now.to_rfc3339())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(backend)?;
+        rows.into_iter()
+            .map(|row| serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend))
+            .collect()
+    }
+
     async fn heartbeat_lock(
         &self,
         lock_id: Uuid,
