@@ -3,7 +3,8 @@ use std::{
     path::Path,
 };
 
-use crate::{DependencyEdge, DependencyKind, IndexedFile, SymbolId, hash_parts};
+use crate::{DependencyEdge, DependencyKind, IndexedFile, SymbolId};
+use crate::parser::{hash_parts, normalize_path};
 
 pub(crate) fn build_edges(files: &BTreeMap<String, IndexedFile>) -> Vec<DependencyEdge> {
     let mut edges = Vec::new();
@@ -120,7 +121,7 @@ fn resolve_import_targets<'a>(
     let parent = Path::new(&source_file.relative_path)
         .parent()
         .unwrap_or_else(|| Path::new(""));
-    let relative_candidate = crate::normalize_path(&parent.join(&normalized));
+    let relative_candidate = normalize_path(&parent.join(&normalized));
     let segments = normalized.split('/').collect::<BTreeSet<_>>();
     files
         .values()
