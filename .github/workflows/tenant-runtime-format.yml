@@ -1,0 +1,30 @@
+name: tenant-runtime-format
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.head_ref == 'feature/tenant-runtime-api-clean'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ github.token }}
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Format and remove helper
+        run: |
+          cargo fmt --all
+          rm .github/workflows/tenant-runtime-format.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/sessionweft-saasd crates/sessionweft-tenant-runtime crates/sessionweft-service-postgres/src/schema.rs crates/sessionweft-saas-postgres/src/auth.rs .github/workflows/tenant-runtime-format.yml
+          git commit -m "style: format tenant Runtime and SaaS API"
+          git push origin HEAD:${{ github.head_ref }}
