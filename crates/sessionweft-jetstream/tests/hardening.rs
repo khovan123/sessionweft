@@ -42,8 +42,8 @@ impl Drop for UnpauseGuard {
 #[tokio::test]
 #[ignore = "requires Docker-controlled NATS JetStream service"]
 async fn publish_fails_bounded_during_partition_and_recovers_after_unpause() {
-    let container = std::env::var("SESSIONWEFT_TEST_NATS_CONTAINER")
-        .expect("SESSIONWEFT_TEST_NATS_CONTAINER");
+    let container =
+        std::env::var("SESSIONWEFT_TEST_NATS_CONTAINER").expect("SESSIONWEFT_TEST_NATS_CONTAINER");
     let server_url = std::env::var("SESSIONWEFT_TEST_NATS_URL")
         .unwrap_or_else(|_| "nats://127.0.0.1:4222".into());
     let suffix = Uuid::new_v4().simple().to_string();
