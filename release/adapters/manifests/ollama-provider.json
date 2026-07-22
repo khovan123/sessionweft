@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "adapter_id": "ollama-provider",
+  "version": "1.0.0",
+  "kind": "provider",
+  "production": true,
+  "supported_platforms": ["linux", "macos", "windows"],
+  "capabilities": ["chat", "local_endpoint", "streaming"],
+  "source_paths": ["crates/sessionweft-provider/src/lib.rs"],
+  "required_gates": ["contract", "compatibility", "security", "recovery", "observability", "supply_chain"]
+}
