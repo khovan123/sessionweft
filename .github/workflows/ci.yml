@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   rust:
@@ -14,60 +14,10 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Harden worktree registry parser once
-        if: github.event_name == 'pull_request' && github.head_ref == 'implementation/git-merge-conflict-recovery' && github.actor != 'github-actions[bot]'
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('crates/sessionweft-git-local/src/merge_execution.rs')
-          text = path.read_text()
-          replacement = '''        let expected_branch = format!("refs/heads/{}", entry.source_branch);
-                  let mut current_path = None;
-                  for raw_line in listing.lines() {
-                      let line = raw_line.trim_end_matches('\\r');
-                      if line.is_empty() {
-                          current_path = None;
-                          continue;
-                      }
-                      if let Some(value) = line.strip_prefix("worktree ") {
-                          current_path = Some(value.to_owned());
-                      } else if let Some(value) = line.strip_prefix("branch ") {
-                          if value == expected_branch {
-                              return current_path.ok_or_else(|| {
-                                  GitOperationError::InvalidOutput(
-                                      "Git worktree registry entry is missing its path".into(),
-                                  )
-                              });
-                          }
-                      }
-                  }
-'''
-          if 'let mut current_path = None;' not in text:
-              start_marker = '        let expected_branch = format!("refs/heads/{}", entry.source_branch);\n'
-              end_marker = '        Err(GitOperationError::InvalidOutput(format!(\n'
-              start = text.find(start_marker)
-              if start < 0:
-                  raise SystemExit('expected_branch marker not found')
-              end = text.find(end_marker, start)
-              if end < 0:
-                  raise SystemExit('registry error marker not found')
-              text = text[:start] + replacement + text[end:]
-          path.write_text(text)
-          PY
-          cargo fmt --all
-          if [ -n "$(git status --porcelain -- '*.rs')" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -- '*.rs'
-            git commit -m "fix: parse Git worktree registry records robustly"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
