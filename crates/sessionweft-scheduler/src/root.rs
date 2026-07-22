@@ -5,6 +5,7 @@ mod polling;
 mod prerequisites;
 mod recovery;
 mod task_execution;
+mod task_execution_queue;
 
 pub use handover::{HandoverRequest, SchedulerHandoverRepository, SchedulerHandoverService};
 pub use polling::{
@@ -21,3 +22,4 @@ pub use task_execution::{
     TaskExecutionError, TaskExecutionRecord, TaskExecutionRepository, TaskExecutionService,
     TaskExecutionSpec, TaskExecutionStatus, ToolExecutionApproval,
 };
+pub use task_execution_queue::TaskExecutionQueueRepository;
