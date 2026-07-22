@@ -60,7 +60,11 @@ impl JetStreamConfig {
     }
 
     fn event_subject(&self, event_type: &str) -> String {
-        format!("{}.{}", self.subject_prefix, normalize_subject_token(event_type))
+        format!(
+            "{}.{}",
+            self.subject_prefix,
+            normalize_subject_token(event_type)
+        )
     }
 }
 
@@ -203,45 +207,39 @@ impl JetStreamEventTransport {
                         .await
                         .map_err(|error| JetStreamError::Consumer(error.to_string()))?;
                 }
-                InboxClaim::Acquired { attempts } => {
-                    match handler.handle(&event).await {
-                        Ok(()) => {
-                            inbox.complete(&config.durable_name, event.event_id).await?;
+                InboxClaim::Acquired { attempts } => match handler.handle(&event).await {
+                    Ok(()) => {
+                        inbox.complete(&config.durable_name, event.event_id).await?;
+                        message
+                            .ack()
+                            .await
+                            .map_err(|error| JetStreamError::Consumer(error.to_string()))?;
+                    }
+                    Err(error) => {
+                        let next_attempt = inbox
+                            .fail(&config.durable_name, event.event_id, &error)
+                            .await?
+                            .max(attempts.saturating_add(1));
+                        if next_attempt >= config.max_deliveries {
+                            self.publish_dead_letter(
+                                &config,
+                                Some(event.event_id),
+                                &message.payload,
+                                &error,
+                            )
+                            .await?;
                             message
                                 .ack()
                                 .await
                                 .map_err(|error| JetStreamError::Consumer(error.to_string()))?;
-                        }
-                        Err(error) => {
-                            let next_attempt = inbox
-                                .fail(&config.durable_name, event.event_id, &error)
-                                .await?
-                                .max(attempts.saturating_add(1));
-                            if next_attempt >= config.max_deliveries {
-                                self.publish_dead_letter(
-                                    &config,
-                                    Some(event.event_id),
-                                    &message.payload,
-                                    &error,
-                                )
-                                .await?;
-                                message
-                                    .ack()
-                                    .await
-                                    .map_err(|error| {
-                                        JetStreamError::Consumer(error.to_string())
-                                    })?;
-                            } else {
-                                message
-                                    .ack_with(AckKind::Nak(Some(config.retry_delay)))
-                                    .await
-                                    .map_err(|error| {
-                                        JetStreamError::Consumer(error.to_string())
-                                    })?;
-                            }
+                        } else {
+                            message
+                                .ack_with(AckKind::Nak(Some(config.retry_delay)))
+                                .await
+                                .map_err(|error| JetStreamError::Consumer(error.to_string()))?;
                         }
                     }
-                }
+                },
             }
         }
     }
@@ -351,7 +349,9 @@ pub enum JetStreamError {
     Publish(String),
     #[error("JetStream consumer error: {0}")]
     Consumer(String),
-    #[error("unsupported event schema {actual} for event {event_id}; supported through {supported}")]
+    #[error(
+        "unsupported event schema {actual} for event {event_id}; supported through {supported}"
+    )]
     UnsupportedSchema {
         event_id: Uuid,
         actual: u32,

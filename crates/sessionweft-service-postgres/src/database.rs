@@ -130,10 +130,7 @@ impl PostgresServiceDatabase {
             .collect()
     }
 
-    pub async fn mark_outbox_published(
-        &self,
-        event_id: Uuid,
-    ) -> Result<(), ServiceDatabaseError> {
+    pub async fn mark_outbox_published(&self, event_id: Uuid) -> Result<(), ServiceDatabaseError> {
         sqlx::query(
             r#"
             UPDATE sessionweft_outbox

@@ -113,7 +113,8 @@ impl MemoryRepository for PostgresMemoryRepository {
         .await
         .map_err(backend)?
         .ok_or(RepositoryError::MemoryNotFound(old_memory_id))?;
-        let mut old: MemoryRecord = serde_json::from_value(row.get("data_json")).map_err(backend)?;
+        let mut old: MemoryRecord =
+            serde_json::from_value(row.get("data_json")).map_err(backend)?;
         if !old.is_active_at(Utc::now()) {
             transaction.rollback().await.map_err(backend)?;
             return Err(RepositoryError::MemoryInactive(old_memory_id));
@@ -163,7 +164,8 @@ impl MemoryRepository for PostgresMemoryRepository {
         .await
         .map_err(backend)?
         .ok_or(RepositoryError::MemoryNotFound(memory_id))?;
-        let mut record: MemoryRecord = serde_json::from_value(row.get("data_json")).map_err(backend)?;
+        let mut record: MemoryRecord =
+            serde_json::from_value(row.get("data_json")).map_err(backend)?;
         if !record.is_active_at(deleted_at) {
             transaction.rollback().await.map_err(backend)?;
             return Err(RepositoryError::MemoryInactive(memory_id));

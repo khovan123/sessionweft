@@ -264,14 +264,13 @@ impl OrchestrationRepository for PostgresOrchestrationRepository {
         }
         let now = Utc::now();
         let mut transaction = self.database.pool.begin().await.map_err(backend)?;
-        let row = sqlx::query(
-            "SELECT data_json FROM sessionweft_locks WHERE lock_id = $1 FOR UPDATE",
-        )
-        .bind(lock_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(backend)?
-        .ok_or(RepositoryError::LockNotFound(lock_id))?;
+        let row =
+            sqlx::query("SELECT data_json FROM sessionweft_locks WHERE lock_id = $1 FOR UPDATE")
+                .bind(lock_id)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(backend)?
+                .ok_or(RepositoryError::LockNotFound(lock_id))?;
         let mut lease: LockLease = serde_json::from_value(row.get("data_json")).map_err(backend)?;
         if lease.owner_id != owner_id
             || lease.fencing_token != fencing_token
@@ -313,14 +312,13 @@ impl OrchestrationRepository for PostgresOrchestrationRepository {
         actor_id: Option<&str>,
     ) -> Result<(), RepositoryError> {
         let mut transaction = self.database.pool.begin().await.map_err(backend)?;
-        let row = sqlx::query(
-            "SELECT data_json FROM sessionweft_locks WHERE lock_id = $1 FOR UPDATE",
-        )
-        .bind(lock_id)
-        .fetch_optional(&mut *transaction)
-        .await
-        .map_err(backend)?
-        .ok_or(RepositoryError::LockNotFound(lock_id))?;
+        let row =
+            sqlx::query("SELECT data_json FROM sessionweft_locks WHERE lock_id = $1 FOR UPDATE")
+                .bind(lock_id)
+                .fetch_optional(&mut *transaction)
+                .await
+                .map_err(backend)?
+                .ok_or(RepositoryError::LockNotFound(lock_id))?;
         let lease: LockLease = serde_json::from_value(row.get("data_json")).map_err(backend)?;
         if lease.owner_id != owner_id || lease.fencing_token != fencing_token {
             transaction.rollback().await.map_err(backend)?;

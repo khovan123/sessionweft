@@ -16,12 +16,10 @@ pub struct PostgresEventInbox {
 
 impl PostgresEventInbox {
     pub async fn new(database: PostgresServiceDatabase) -> Result<Self, JetStreamError> {
-        sqlx::query(
-            "ALTER TABLE sessionweft_inbox ADD COLUMN IF NOT EXISTS processing_by TEXT",
-        )
-        .execute(&database.pool)
-        .await
-        .map_err(inbox_error)?;
+        sqlx::query("ALTER TABLE sessionweft_inbox ADD COLUMN IF NOT EXISTS processing_by TEXT")
+            .execute(&database.pool)
+            .await
+            .map_err(inbox_error)?;
         sqlx::query(
             "ALTER TABLE sessionweft_inbox ADD COLUMN IF NOT EXISTS processing_until TIMESTAMPTZ",
         )

@@ -1,4 +1,10 @@
-use std::{sync::{Arc, atomic::{AtomicUsize, Ordering}}, time::Duration};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+    time::Duration,
+};
 
 use async_trait::async_trait;
 use sessionweft_core::{EventEnvelope, SessionId};
@@ -33,10 +39,13 @@ async fn two_runtimes_cannot_claim_the_same_task_or_conflicting_lock() {
         left.claim_task(&task_id, "runtime-a", Duration::from_secs(30)),
         right.claim_task(&task_id, "runtime-b", Duration::from_secs(30)),
     );
-    let claimed = [left_claim.expect("left claim"), right_claim.expect("right claim")]
-        .into_iter()
-        .flatten()
-        .collect::<Vec<_>>();
+    let claimed = [
+        left_claim.expect("left claim"),
+        right_claim.expect("right claim"),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<Vec<_>>();
     assert_eq!(claimed.len(), 1, "exactly one Runtime must own a task");
 
     let workspace_id = format!("workspace-{}", Uuid::new_v4());
@@ -63,12 +72,18 @@ async fn two_runtimes_cannot_claim_the_same_task_or_conflicting_lock() {
         .into_iter()
         .filter(|result| result.is_ok())
         .count();
-    assert_eq!(successes, 1, "exactly one Runtime must own a conflicting lock");
+    assert_eq!(
+        successes, 1,
+        "exactly one Runtime must own a conflicting lock"
+    );
     let failures = [left_lock, right_lock]
         .into_iter()
         .filter_map(Result::err)
         .collect::<Vec<_>>();
-    assert!(matches!(failures.as_slice(), [RepositoryError::LockConflict { .. }]));
+    assert!(matches!(
+        failures.as_slice(),
+        [RepositoryError::LockConflict { .. }]
+    ));
 }
 
 struct CountingHandler {
@@ -138,8 +153,14 @@ async fn JetStream_redelivery_is_idempotent_across_runtime_restart() {
         Some("integration-test"),
         serde_json::json!({"task_id": Uuid::new_v4()}),
     );
-    transport.publish_event(&event).await.expect("first publish");
-    transport.publish_event(&event).await.expect("duplicate publish");
+    transport
+        .publish_event(&event)
+        .await
+        .expect("first publish");
+    transport
+        .publish_event(&event)
+        .await
+        .expect("duplicate publish");
     tokio::time::timeout(Duration::from_secs(10), handler.completed.notified())
         .await
         .expect("handler completion");

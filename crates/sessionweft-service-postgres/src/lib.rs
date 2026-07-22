@@ -6,9 +6,7 @@ mod orchestration;
 mod session;
 
 pub use agent::PostgresAgentRepository;
-pub use database::{
-    ClaimedOutboxEvent, PostgresServiceDatabase, ServiceDatabaseError, TaskClaim,
-};
+pub use database::{ClaimedOutboxEvent, PostgresServiceDatabase, ServiceDatabaseError, TaskClaim};
 pub use inbox::PostgresEventInbox;
 pub use memory::PostgresMemoryRepository;
 pub use orchestration::PostgresOrchestrationRepository;
