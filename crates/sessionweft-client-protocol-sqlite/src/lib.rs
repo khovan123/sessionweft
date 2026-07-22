@@ -6,7 +6,10 @@ use sessionweft_client_protocol::{
     EventJournalError, validate_event_limit,
 };
 use sessionweft_core::EventEnvelope;
-use sqlx::{Row, SqlitePool, sqlite::{SqliteConnectOptions, SqlitePoolOptions}};
+use sqlx::{
+    Row, SqlitePool,
+    sqlite::{SqliteConnectOptions, SqlitePoolOptions},
+};
 
 #[derive(Clone)]
 pub struct SqliteClientEventJournal {
@@ -162,8 +165,7 @@ fn to_i64(value: u64) -> Result<i64, EventJournalError> {
 }
 
 fn to_u64(value: i64) -> Result<u64, EventJournalError> {
-    u64::try_from(value)
-        .map_err(|_| EventJournalError::Backend("negative event sequence".into()))
+    u64::try_from(value).map_err(|_| EventJournalError::Backend("negative event sequence".into()))
 }
 
 fn backend(error: impl std::fmt::Display) -> EventJournalError {

@@ -40,7 +40,10 @@ async fn cursor_resumes_after_journal_reopen_and_duplicate_append_is_idempotent(
     assert_eq!(batch.events.len(), 1);
     assert_eq!(batch.events[0].envelope.event_id, second.event_id);
     assert_eq!(batch.next, second_record.cursor);
-    assert_eq!(reopened.latest_cursor().await.expect("latest"), second_record.cursor);
+    assert_eq!(
+        reopened.latest_cursor().await.expect("latest"),
+        second_record.cursor
+    );
     assert!(
         reopened
             .list_after(EventCursor(0), 100)

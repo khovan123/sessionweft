@@ -23,10 +23,7 @@ pub(super) fn routes() -> Router<AppState> {
         .route("/v1/client/protocol", get(protocol))
         .route("/v1/events", get(list_events))
         .route("/v1/events/stream", get(stream_events))
-        .route(
-            "/v1/sessions/{session_id}/client-view",
-            get(client_view),
-        )
+        .route("/v1/sessions/{session_id}/client-view", get(client_view))
         .route("/v1/pty", post(start_pty))
         .route("/v1/pty/{pty_id}", get(get_pty))
         .route("/v1/pty/{pty_id}/input", post(pty_input))
@@ -161,10 +158,7 @@ async fn client_view(
     } else {
         Vec::new()
     };
-    let pending_approvals = workflow
-        .as_ref()
-        .map(pending_approvals)
-        .unwrap_or_default();
+    let pending_approvals = workflow.as_ref().map(pending_approvals).unwrap_or_default();
     let view = ClientResourceView {
         protocol_version: sessionweft_client_protocol::CLIENT_PROTOCOL_VERSION,
         session_id,
@@ -211,8 +205,13 @@ fn pending_approvals(workflow: &WorkflowExecution) -> Vec<PendingApproval> {
 async fn start_pty(
     State(state): State<AppState>,
     Json(request): Json<StartPtyRequest>,
-) -> Result<(StatusCode, Json<ApiEnvelope<sessionweft_client_protocol::PtySessionDescriptor>>), ApiError>
-{
+) -> Result<
+    (
+        StatusCode,
+        Json<ApiEnvelope<sessionweft_client_protocol::PtySessionDescriptor>>,
+    ),
+    ApiError,
+> {
     let correlation_id = Uuid::new_v4();
     state
         .runtime

@@ -123,12 +123,10 @@ impl App {
             query.push(("workspace_id", workspace_id.clone()));
         }
         let request = self
-            .authorized(
-                self.client.get(format!(
-                    "{}/v1/sessions/{}/client-view",
-                    self.endpoint, self.session_id
-                )),
-            )
+            .authorized(self.client.get(format!(
+                "{}/v1/sessions/{}/client-view",
+                self.endpoint, self.session_id
+            )))
             .query(&query);
         let response = request.send().await.context("failed to reach Runtime")?;
         ensure_success(response.status())?;
@@ -188,11 +186,11 @@ impl App {
     }
 
     fn authorized(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
-        self.token
-            .as_deref()
-            .map_or(request.try_clone().unwrap_or(request), |token| {
-                request.bearer_auth(token)
-            })
+        if let Some(token) = self.token.as_deref() {
+            request.bearer_auth(token)
+        } else {
+            request
+        }
     }
 }
 
@@ -281,7 +279,11 @@ fn render(frame: &mut Frame<'_>, app: &App) {
     frame.render_widget(
         Paragraph::new(workflow_text)
             .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title("Workflow / Agent / Locks")),
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Workflow / Agent / Locks"),
+            ),
         resource_columns[1],
     );
 
@@ -305,7 +307,11 @@ fn render(frame: &mut Frame<'_>, app: &App) {
                 .iter()
                 .enumerate()
                 .map(|(index, approval)| {
-                    let marker = if index == app.selected_approval { ">" } else { " " };
+                    let marker = if index == app.selected_approval {
+                        ">"
+                    } else {
+                        " "
+                    };
                     ListItem::new(format!(
                         "{marker} {} / {} / version {}",
                         approval.workflow_id, approval.node_id, approval.expected_version

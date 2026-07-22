@@ -1,14 +1,7 @@
 mod client_api;
 mod control_plane_api;
 
-use std::{
-    collections::BTreeSet,
-    env,
-    net::SocketAddr,
-    path::PathBuf,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeSet, env, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
 use anyhow::{Context, bail};
 use axum::{
@@ -248,11 +241,7 @@ async fn authenticate(State(state): State<AppState>, request: Request, next: Nex
     next.run(request).await
 }
 
-async fn audit_mutations(
-    State(state): State<AppState>,
-    request: Request,
-    next: Next,
-) -> Response {
+async fn audit_mutations(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
     let response = next.run(request).await;

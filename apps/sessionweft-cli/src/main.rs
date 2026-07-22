@@ -1,3 +1,6 @@
+mod protocol_cli;
+
+use protocol_cli::ClientCommand;
 use std::path::PathBuf;
 
 use anyhow::{Context, bail};
@@ -155,6 +158,10 @@ enum Command {
         session_id: String,
         memory_id: String,
     },
+    Client {
+        #[command(subcommand)]
+        command: ClientCommand,
+    },
 }
 
 #[tokio::main]
@@ -162,6 +169,11 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let client = reqwest::Client::new();
     let endpoint = cli.endpoint.trim_end_matches('/');
+
+    if let Command::Client { command } = &cli.command {
+        protocol_cli::execute(&client, endpoint, cli.token.as_deref(), command).await?;
+        return Ok(());
+    }
 
     let (method, path, body) = match cli.command {
         Command::Health => (Method::GET, "/health/ready".to_owned(), None),
@@ -385,6 +397,7 @@ async fn main() -> anyhow::Result<()> {
             format!("/v1/sessions/{session_id}/memories/{memory_id}/forget"),
             None,
         ),
+        Command::Client { .. } => unreachable!("client commands return before legacy dispatch"),
     };
 
     let mut request = client.request(method, format!("{endpoint}{path}"));

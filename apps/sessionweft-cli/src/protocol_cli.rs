@@ -69,8 +69,15 @@ pub async fn execute(
 ) -> anyhow::Result<()> {
     match command {
         ClientCommand::Protocol => {
-            let value = request(client, endpoint, token, Method::GET, "/v1/client/protocol", None)
-                .await?;
+            let value = request(
+                client,
+                endpoint,
+                token,
+                Method::GET,
+                "/v1/client/protocol",
+                None,
+            )
+            .await?;
             print_pretty(&value)
         }
         ClientCommand::Events {
@@ -270,7 +277,10 @@ async fn request(
     }
     let response = builder.send().await.context("failed to reach Runtime")?;
     let status = response.status();
-    let bytes = response.bytes().await.context("failed to read Runtime response")?;
+    let bytes = response
+        .bytes()
+        .await
+        .context("failed to read Runtime response")?;
     let value = if bytes.is_empty() {
         Value::Null
     } else {
@@ -285,9 +295,11 @@ async fn request(
 }
 
 fn authorize(builder: RequestBuilder, token: Option<&str>) -> RequestBuilder {
-    token.map_or(builder.try_clone().unwrap_or(builder), |token| {
+    if let Some(token) = token {
         builder.bearer_auth(token)
-    })
+    } else {
+        builder
+    }
 }
 
 fn print_pretty(value: &Value) -> anyhow::Result<()> {

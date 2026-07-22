@@ -8,9 +8,7 @@ use std::{
 };
 
 use chrono::Utc;
-use portable_pty::{
-    ChildKiller, CommandBuilder, MasterPty, PtySize, PtySystem, native_pty_system,
-};
+use portable_pty::{ChildKiller, CommandBuilder, MasterPty, PtySize, PtySystem, native_pty_system};
 use thiserror::Error;
 use tokio::sync::Notify;
 use uuid::Uuid;
@@ -97,7 +95,7 @@ impl PtySupervisor {
         for (key, value) in &request.environment {
             command.env(key, value);
         }
-        let mut child = pair
+        let child = pair
             .slave
             .spawn_command(command)
             .map_err(|error| PtyError::Backend(error.to_string()))?;
@@ -134,7 +132,7 @@ impl PtySupervisor {
             .map_err(|_| PtyError::Poisoned)?
             .insert(pty_id, Arc::clone(&session));
         spawn_reader(Arc::clone(&session), reader);
-        spawn_waiter(Arc::clone(&session), &mut child);
+        spawn_waiter(Arc::clone(&session), child);
         Ok(session.descriptor()?)
     }
 
@@ -342,44 +340,11 @@ fn spawn_reader(session: Arc<PtySession>, mut reader: Box<dyn Read + Send>) {
     });
 }
 
-fn spawn_waiter(
-    session: Arc<PtySession>,
-    child: &mut Box<dyn portable_pty::Child + Send + Sync>,
-) {
-    let mut child = std::mem::replace(child, empty_child());
+fn spawn_waiter(session: Arc<PtySession>, mut child: Box<dyn portable_pty::Child + Send + Sync>) {
     thread::spawn(move || match child.wait() {
         Ok(_) => session.finish(PtyStatus::Exited),
         Err(_) => session.finish(PtyStatus::Failed),
     });
-}
-
-fn empty_child() -> Box<dyn portable_pty::Child + Send + Sync> {
-    struct EmptyChild;
-    impl std::fmt::Debug for EmptyChild {
-        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("EmptyChild")
-        }
-    }
-    impl ChildKiller for EmptyChild {
-        fn kill(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-        fn clone_killer(&self) -> Box<dyn ChildKiller + Send + Sync> {
-            Box::new(Self)
-        }
-    }
-    impl portable_pty::Child for EmptyChild {
-        fn try_wait(&mut self) -> std::io::Result<Option<portable_pty::ExitStatus>> {
-            Ok(Some(portable_pty::ExitStatus::with_exit_code(0)))
-        }
-        fn wait(&mut self) -> std::io::Result<portable_pty::ExitStatus> {
-            Ok(portable_pty::ExitStatus::with_exit_code(0))
-        }
-        fn process_id(&self) -> Option<u32> {
-            None
-        }
-    }
-    Box::new(EmptyChild)
 }
 
 fn validate_start(request: &StartPtyRequest) -> Result<(), PtyError> {

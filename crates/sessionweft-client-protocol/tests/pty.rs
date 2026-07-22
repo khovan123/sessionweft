@@ -1,8 +1,6 @@
 use std::{collections::BTreeSet, time::Duration};
 
-use sessionweft_client_protocol::{
-    PtyStatus, PtySupervisor, StartPtyRequest, discover_programs,
-};
+use sessionweft_client_protocol::{PtyStatus, PtySupervisor, StartPtyRequest, discover_programs};
 use sessionweft_core::SessionId;
 
 #[tokio::test]
@@ -12,8 +10,8 @@ async fn dropping_client_poll_does_not_cancel_runtime_owned_pty() {
         return;
     }
     let directory = tempfile::tempdir().expect("tempdir");
-    let supervisor = PtySupervisor::new(directory.path(), programs, BTreeSet::new())
-        .expect("supervisor");
+    let supervisor =
+        PtySupervisor::new(directory.path(), programs, BTreeSet::new()).expect("supervisor");
     let descriptor = supervisor
         .start(StartPtyRequest {
             session_id: SessionId::new(),
@@ -65,8 +63,8 @@ async fn output_is_bounded_and_resumable_by_cursor() {
         return;
     }
     let directory = tempfile::tempdir().expect("tempdir");
-    let supervisor = PtySupervisor::new(directory.path(), programs, BTreeSet::new())
-        .expect("supervisor");
+    let supervisor =
+        PtySupervisor::new(directory.path(), programs, BTreeSet::new()).expect("supervisor");
     let descriptor = supervisor
         .start(StartPtyRequest {
             session_id: SessionId::new(),
