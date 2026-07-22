@@ -156,7 +156,7 @@ async fn main() -> anyhow::Result<()> {
         Duration::from_millis(100),
     ));
 
-    let metrics = Arc::new(MetricsRegistry::new());
+    let metrics_registry = Arc::new(MetricsRegistry::new());
     let state = AppState {
         runtime,
         control_plane,
@@ -164,7 +164,7 @@ async fn main() -> anyhow::Result<()> {
         api_token,
         event_journal,
         pty,
-        metrics,
+        metrics: metrics_registry,
     };
     let protected = Router::new()
         .route("/health/ready", get(readiness))
