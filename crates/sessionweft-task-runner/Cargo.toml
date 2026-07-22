@@ -1,21 +1,21 @@
 [package]
-name = "sessionweft-scheduler"
+name = "sessionweft-task-runner"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
-[lib]
-path = "src/root.rs"
-
 [dependencies]
 async-trait.workspace = true
-chrono.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 sessionweft-core = { path = "../sessionweft-core" }
-sessionweft-execution = { path = "../sessionweft-execution" }
-sessionweft-orchestration = { path = "../sessionweft-orchestration" }
+sessionweft-provider = { path = "../sessionweft-provider" }
+sessionweft-scheduler = { path = "../sessionweft-scheduler" }
 thiserror.workspace = true
+
+[dev-dependencies]
+chrono.workspace = true
+sessionweft-execution = { path = "../sessionweft-execution" }
+tokio.workspace = true
 uuid.workspace = true
