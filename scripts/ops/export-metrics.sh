@@ -30,12 +30,26 @@ jetstream_streams=0
 jetstream_consumers=0
 jetstream_messages=0
 if payload="$(curl --fail --silent --max-time 3 "$NATS_MONITOR_URL/jsz?streams=true&consumers=true" 2>/dev/null)"; then
-  read -r jetstream_streams jetstream_consumers jetstream_messages < <(
-    python3 -c 'import json,sys
-p=json.load(sys.stdin)
-streams=p.get("streams", []) or []
-print(len(streams), sum(len(s.get("consumer", []) or s.get("consumers", []) or []) for s in streams), sum(int((s.get("state") or {}).get("messages",0)) for s in streams))' <<<"$payload"
-  )
+  parsed="$(python3 -c 'import json,sys
+try:
+    p=json.load(sys.stdin)
+    details=p.get("stream_detail") or []
+    streams=p.get("streams", 0)
+    if isinstance(streams, list):
+        details=streams
+        stream_count=len(streams)
+    else:
+        stream_count=int(streams or len(details))
+    if details:
+        consumer_count=sum(int(s.get("consumer_count", 0) or len(s.get("consumer_detail") or [])) for s in details)
+        message_count=sum(int((s.get("state") or {}).get("messages", 0)) for s in details)
+    else:
+        consumer_count=int(p.get("consumers", 0) or 0)
+        message_count=int(p.get("messages", 0) or 0)
+    print(stream_count, consumer_count, message_count)
+except Exception:
+    print("0 0 0")' <<<"$payload")"
+  read -r jetstream_streams jetstream_consumers jetstream_messages <<<"$parsed"
 fi
 
 cat > "$TEMP" <<METRICS
