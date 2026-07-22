@@ -19,6 +19,3 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 uuid.workspace = true
-
-[dev-dependencies]
-sessionweft-service-postgres = { path = "../sessionweft-service-postgres" }
