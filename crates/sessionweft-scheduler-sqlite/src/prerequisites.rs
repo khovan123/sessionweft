@@ -144,18 +144,14 @@ impl SqliteSchedulerRepository {
                 continue;
             }
             let fence = match required_lock {
-                Some(required) => match lock_fence_for(
-                    transaction,
-                    session_id,
-                    agent.id,
-                    &required.required,
-                    now,
-                )
-                .await?
-                {
-                    Some(fence) => Some(fence),
-                    None => continue,
-                },
+                Some(required) => {
+                    match lock_fence_for(transaction, session_id, agent.id, &required.required, now)
+                        .await?
+                    {
+                        Some(fence) => Some(fence),
+                        None => continue,
+                    }
+                }
                 None => None,
             };
             return Ok(Some((agent, fence)));
@@ -186,8 +182,8 @@ pub(super) async fn lock_fence_for(
     .await
     .map_err(backend)?;
     for row in rows {
-        let lease = serde_json::from_str::<LockLease>(row.get::<&str, _>("data_json"))
-            .map_err(backend)?;
+        let lease =
+            serde_json::from_str::<LockLease>(row.get::<&str, _>("data_json")).map_err(backend)?;
         let mode_matches = match required.mode {
             LockMode::Shared => true,
             LockMode::Exclusive => lease.mode == LockMode::Exclusive,
@@ -271,13 +267,12 @@ impl SchedulerPrerequisiteRepository for SqliteSchedulerRepository {
         claim_id: Uuid,
     ) -> Result<Option<ClaimLockFenceSnapshot>, RepositoryError> {
         self.ensure_prerequisite_tables().await?;
-        let row = sqlx::query(
-            "SELECT data_json FROM scheduler_claim_lock_fences WHERE claim_id = ?",
-        )
-        .bind(claim_id.to_string())
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(backend)?;
+        let row =
+            sqlx::query("SELECT data_json FROM scheduler_claim_lock_fences WHERE claim_id = ?")
+                .bind(claim_id.to_string())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(backend)?;
         row.map(|row| serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend))
             .transpose()
     }
@@ -308,12 +303,9 @@ impl SchedulerPrerequisiteRepository for SqliteSchedulerRepository {
             if !plan.requirement_for(&node_id).matches(&agent) {
                 continue;
             }
-            let required = Self::lock_requirement_in_transaction(
-                &mut transaction,
-                workflow.id,
-                &node_id,
-            )
-            .await?;
+            let required =
+                Self::lock_requirement_in_transaction(&mut transaction, workflow.id, &node_id)
+                    .await?;
             let fence = match required.as_ref() {
                 Some(required) => match lock_fence_for(
                     &mut transaction,
@@ -414,7 +406,9 @@ impl SchedulerPrerequisiteRepository for SqliteSchedulerRepository {
         )
         .await?
         {
-            return Self::current_state(&mut transaction, active).await.map(Some);
+            return Self::current_state(&mut transaction, active)
+                .await
+                .map(Some);
         }
         let plan = Self::load_plan(&mut transaction, previous.workflow_id).await?;
         let mut workflow = Self::load_workflow(&mut transaction, previous.workflow_id).await?;
@@ -432,12 +426,9 @@ impl SchedulerPrerequisiteRepository for SqliteSchedulerRepository {
             ));
         }
         let requirement = plan.requirement_for(&previous.node_id);
-        let required_lock = Self::lock_requirement_in_transaction(
-            &mut transaction,
-            workflow.id,
-            &previous.node_id,
-        )
-        .await?;
+        let required_lock =
+            Self::lock_requirement_in_transaction(&mut transaction, workflow.id, &previous.node_id)
+                .await?;
         let Some((mut agent, fence)) = Self::replacement_agent_guarded(
             &mut transaction,
             previous.session_id,

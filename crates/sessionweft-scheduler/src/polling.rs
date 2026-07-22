@@ -6,8 +6,8 @@ use sessionweft_core::SessionId;
 use uuid::Uuid;
 
 use super::{
-    ClaimRequest, HandoverRequest, RepositoryError, SchedulerError, SchedulerPrerequisiteRepository,
-    SchedulerRecoveryRepository,
+    ClaimRequest, HandoverRequest, RepositoryError, SchedulerError,
+    SchedulerPrerequisiteRepository, SchedulerRecoveryRepository,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
