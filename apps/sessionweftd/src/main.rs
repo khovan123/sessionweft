@@ -1,7 +1,14 @@
 mod client_api;
 mod control_plane_api;
 
-use std::{collections::BTreeSet, env, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    env,
+    net::SocketAddr,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use anyhow::{Context, bail};
 use axum::{
@@ -21,6 +28,7 @@ use sessionweft_control_plane::RuntimeControlPlane;
 use sessionweft_core::{DomainError, EventEnvelope, MessageRole, Session, SessionId};
 use sessionweft_execution_sqlite::SqliteAgentRepository;
 use sessionweft_knowledge_sqlite::SqliteMemoryRepository;
+use sessionweft_observability::MetricsRegistry;
 use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
 use sessionweft_provider::{EchoProvider, OllamaProvider, ProviderError, ProviderRegistry};
 use sessionweft_runtime::{
@@ -49,6 +57,7 @@ struct AppState {
     api_token: Option<Arc<str>>,
     event_journal: Arc<SqliteClientEventJournal>,
     pty: Arc<PtySupervisor>,
+    metrics: Arc<MetricsRegistry>,
 }
 
 #[tokio::main]
@@ -147,6 +156,7 @@ async fn main() -> anyhow::Result<()> {
         Duration::from_millis(100),
     ));
 
+    let metrics = Arc::new(MetricsRegistry::new());
     let state = AppState {
         runtime,
         control_plane,
@@ -154,9 +164,11 @@ async fn main() -> anyhow::Result<()> {
         api_token,
         event_journal,
         pty,
+        metrics,
     };
     let protected = Router::new()
         .route("/health/ready", get(readiness))
+        .route("/metrics", get(metrics))
         .route("/v1/sessions", get(list_sessions).post(create_session))
         .route("/v1/sessions/{id}", get(get_session))
         .route("/v1/sessions/{id}/messages", post(append_message))
@@ -174,6 +186,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/health/live", get(liveness))
         .merge(protected)
         .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            observe_requests,
+        ))
         .with_state(state);
 
     let listener = TcpListener::bind(address)
@@ -214,6 +230,26 @@ async fn shutdown_signal(cancellation: CancellationToken) {
     cancellation.cancel();
 }
 
+async fn observe_requests(State(state): State<AppState>, request: Request, next: Next) -> Response {
+    let method = request.method().as_str().to_owned();
+    let started = Instant::now();
+    let response = next.run(request).await;
+    state
+        .metrics
+        .record_http(&method, response.status().as_u16(), started.elapsed());
+    response
+}
+
+async fn metrics(State(state): State<AppState>) -> impl IntoResponse {
+    (
+        [(
+            header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
+        state.metrics.render_prometheus(),
+    )
+}
+
 async fn authenticate(State(state): State<AppState>, request: Request, next: Next) -> Response {
     let Some(expected) = state.api_token.as_deref() else {
         return next.run(request).await;
@@ -226,6 +262,7 @@ async fn authenticate(State(state): State<AppState>, request: Request, next: Nex
         .and_then(|value| value.strip_prefix("Bearer "))
         .is_some_and(|value| constant_time_eq(value.as_bytes(), expected.as_bytes()));
     if !authorized {
+        state.metrics.record_auth_denied();
         let correlation_id = Uuid::new_v4();
         warn!(operation = "authorize", correlation_id = %correlation_id, "request denied");
         return ApiError::new(
@@ -246,6 +283,7 @@ async fn audit_mutations(State(state): State<AppState>, request: Request, next: 
     let path = request.uri().path().to_owned();
     let response = next.run(request).await;
     if method != Method::GET && response.status().is_success() {
+        state.metrics.record_successful_mutation();
         let event = EventEnvelope::new(
             "client.command_completed",
             session_id_from_path(&path),
@@ -258,6 +296,7 @@ async fn audit_mutations(State(state): State<AppState>, request: Request, next: 
             }),
         );
         if let Err(error) = state.event_journal.append(&event).await {
+            state.metrics.record_event_journal_failure();
             warn!(operation = "client_command_audit", error = %error, "failed to journal client command");
         }
     }

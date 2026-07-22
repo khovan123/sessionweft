@@ -7,7 +7,15 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-const HTTP_BUCKETS_MICROS: [u128; 7] = [100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, u128::MAX];
+const HTTP_BUCKETS_MICROS: [u128; 7] = [
+    100_000,
+    250_000,
+    500_000,
+    1_000_000,
+    2_000_000,
+    5_000_000,
+    u128::MAX,
+];
 const HTTP_BUCKET_LABELS: [&str; 7] = ["0.1", "0.25", "0.5", "1", "2", "5", "+Inf"];
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -171,9 +179,7 @@ fn append_counter(output: &mut String, name: &str, help: &str, value: u64) {
 
 fn normalized_method(method: &str) -> String {
     match method {
-        "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD" => {
-            method.to_owned()
-        }
+        "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD" => method.to_owned(),
         _ => "OTHER".into(),
     }
 }
@@ -193,12 +199,12 @@ mod tests {
         registry.record_event_journal_failure();
 
         let metrics = registry.render_prometheus();
-        assert!(metrics.contains(
-            "sessionweft_http_requests_total{method=\"GET\",status=\"200\"} 2"
-        ));
-        assert!(metrics.contains(
-            "sessionweft_http_requests_total{method=\"OTHER\",status=\"503\"} 1"
-        ));
+        assert!(
+            metrics.contains("sessionweft_http_requests_total{method=\"GET\",status=\"200\"} 2")
+        );
+        assert!(
+            metrics.contains("sessionweft_http_requests_total{method=\"OTHER\",status=\"503\"} 1")
+        );
         assert!(metrics.contains(
             "sessionweft_http_request_duration_seconds_bucket{method=\"GET\",le=\"0.1\"} 1"
         ));

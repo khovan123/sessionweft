@@ -27,6 +27,7 @@ sessionweft-knowledge = { path = "../../crates/sessionweft-knowledge" }
 sessionweft-knowledge-sqlite = { path = "../../crates/sessionweft-knowledge-sqlite" }
 sessionweft-orchestration = { path = "../../crates/sessionweft-orchestration" }
 sessionweft-orchestration-sqlite = { path = "../../crates/sessionweft-orchestration-sqlite" }
+sessionweft-observability = { path = "../../crates/sessionweft-observability" }
 sessionweft-provider = { path = "../../crates/sessionweft-provider" }
 sessionweft-runtime = { path = "../../crates/sessionweft-runtime" }
 sessionweft-scheduler = { path = "../../crates/sessionweft-scheduler" }
