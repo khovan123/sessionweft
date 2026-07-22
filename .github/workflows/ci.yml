@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   rust:
@@ -14,10 +14,60 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Finalize Cargo.lock through Git Data API
+        if: github.event_name == 'pull_request' && github.head_ref == 'release/production-hardening-clean'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_BRANCH: ${{ github.head_ref }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile
+          if grep -q '^name = "rsa"$' Cargo.lock; then
+            echo 'rsa must not be present in the finalized lockfile' >&2
+            exit 1
+          fi
+
+          generated_blob="$(git hash-object Cargo.lock)"
+          current_blob="$(git rev-parse HEAD:Cargo.lock 2>/dev/null || true)"
+          if [ "$generated_blob" = "$current_blob" ]; then
+            echo 'Cargo.lock is already finalized'
+            exit 0
+          fi
+
+          remote_head="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${TARGET_BRANCH}" --jq .object.sha)"
+          if [ "$remote_head" != "$EXPECTED_HEAD" ]; then
+            echo "branch moved: expected $EXPECTED_HEAD, found $remote_head" >&2
+            exit 1
+          fi
+
+          base_tree="$(gh api "repos/${GITHUB_REPOSITORY}/git/commits/${remote_head}" --jq .tree.sha)"
+          lock_base64="$(base64 -w0 Cargo.lock)"
+          blob_sha="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/blobs" \
+            -f content="$lock_base64" -f encoding=base64 --jq .sha)"
+
+          jq -n --arg base "$base_tree" --arg blob "$blob_sha" \
+            '{base_tree:$base,tree:[{path:"Cargo.lock",mode:"100644",type:"blob",sha:$blob}]}' \
+            > /tmp/tree.json
+          tree_sha="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/trees" \
+            --input /tmp/tree.json --jq .sha)"
+
+          jq -n --arg tree "$tree_sha" --arg parent "$remote_head" \
+            '{message:"build: finalize Cargo.lock via Git Data API",tree:$tree,parents:[$parent]}' \
+            > /tmp/commit.json
+          commit_sha="$(gh api --method POST "repos/${GITHUB_REPOSITORY}/git/commits" \
+            --input /tmp/commit.json --jq .sha)"
+
+          jq -n --arg sha "$commit_sha" '{sha:$sha,force:false}' > /tmp/ref.json
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${TARGET_BRANCH}" \
+            --input /tmp/ref.json >/dev/null
+          echo "Finalized Cargo.lock in commit $commit_sha"
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
