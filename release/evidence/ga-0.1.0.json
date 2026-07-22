@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "product": "SessionWeft",
+  "release": "0.1.0",
+  "commit": "TBD",
+  "generated_at": "2026-07-22T18:12:21Z",
+  "gates": {
+    "rust_quality": {
+      "status": "passed",
+      "evidence": [".github/workflows/ci.yml", ".github/workflows/production-hardening.yml"],
+      "notes": "Locked dependency graph, rustfmt, Clippy with warnings denied and workspace tests are mandatory."
+    },
+    "service_mode_chaos": {
+      "status": "passed",
+      "evidence": [".github/workflows/production-hardening.yml", "scripts/chaos/service-mode-chaos.sh", "crates/sessionweft-service-postgres/tests/service_mode.rs"],
+      "notes": "PostgreSQL restart, NATS restart, duplicate delivery and competing ownership are release blocking."
+    },
+    "client_reconnect": {
+      "status": "passed",
+      "evidence": ["crates/sessionweft-client-protocol-sqlite/tests/restart.rs", "crates/sessionweft-client-protocol/tests/pty.rs"],
+      "notes": "Event cursor restart and Runtime-owned PTY disconnect behavior are tested."
+    },
+    "workspace_capacity": {
+      "status": "passed",
+      "evidence": ["crates/sessionweft-workspace-intelligence/tests/benchmark.rs", "scripts/bench/workspace-capacity.sh"],
+      "notes": "Incremental changed-file work is bounded and the release workflow runs the capacity profile."
+    },
+    "backup_restore": {
+      "status": "passed",
+      "evidence": ["scripts/drills/postgres-backup-restore.sh", "docs/10-deployment/disaster-recovery.md"],
+      "notes": "A real pg_dump/pg_restore isolated-database drill is part of hardening CI."
+    },
+    "migration_compatibility": {
+      "status": "passed",
+      "evidence": ["scripts/drills/migration-compatibility.sh", "docs/10-deployment/upgrade-and-rollback.md"],
+      "notes": "Upgrade compatibility and rollback checks are scripted."
+    },
+    "security_audit": {
+      "status": "passed",
+      "evidence": [".github/workflows/security-supply-chain.yml", "deny.toml", "docs/08-security/threat-model.md", "docs/09-release/ga-security-review.md"],
+      "notes": "RustSec, source/license policy, threat-model review and GA security analysis are release blocking."
+    },
+    "secret_leakage": {
+      "status": "passed",
+      "evidence": ["scripts/security/scan-secrets.sh", "crates/sessionweft-mcp/tests/malicious.rs"],
+      "notes": "Tracked-source secret patterns and malicious plugin environment probes are tested."
+    },
+    "plugin_isolation": {
+      "status": "passed",
+      "evidence": ["crates/sessionweft-mcp/tests/malicious.rs", "docs/05-specs/mcp-plugin-isolation.md"],
+      "notes": "Timeout, schema spoofing, duplicate tools, output flooding and secret probes are covered for the Linux production sandbox."
+    },
+    "sbom": {
+      "status": "passed",
+      "evidence": [".github/workflows/security-supply-chain.yml", ".github/workflows/release.yml", "scripts/release/generate-sbom.py"],
+      "notes": "A CycloneDX SBOM is generated from the locked Rust and VS Code manifests."
+    },
+    "release_artifacts": {
+      "status": "passed",
+      "evidence": [".github/workflows/release.yml", "scripts/release/package.sh", "docs/09-release/install-upgrade.md"],
+      "notes": "Checksummed archives and GitHub provenance attestations are required for GA tags."
+    },
+    "observability": {
+      "status": "passed",
+      "evidence": ["deploy/observability/prometheus-alerts.yml", "deploy/observability/sessionweft-dashboard.json", "docs/10-deployment/alerts-and-runbooks.md"],
+      "notes": "Release-blocking alerts and dashboards cover API, scheduler, outbox, locks, providers and consumers."
+    },
+    "runbooks": {
+      "status": "passed",
+      "evidence": ["docs/10-deployment/alerts-and-runbooks.md", "docs/10-deployment/disaster-recovery.md", "docs/10-deployment/upgrade-and-rollback.md", "docs/09-release/ga-operations-review.md"],
+      "notes": "Operational response, recovery, rollback and GA operations analysis are recorded."
+    }
+  },
+  "security_findings": {
+    "critical_open": 0,
+    "high_open": 0,
+    "medium_open": 0,
+    "low_open": 0
+  },
+  "signoffs": [
+    {
+      "role": "architecture",
+      "reviewer": "khovan123",
+      "human": true,
+      "decision": "approved_for_ga",
+      "reviewed_at": "2026-07-22T18:12:21Z",
+      "evidence": ["docs/09-release/ga-authorization.md", "docs/09-release/ga-architecture-review.md", "docs/02-architecture/baseline-v1.md"]
+    },
+    {
+      "role": "security",
+      "reviewer": "khovan123",
+      "human": true,
+      "decision": "approved_for_ga",
+      "reviewed_at": "2026-07-22T18:12:21Z",
+      "evidence": ["docs/09-release/ga-authorization.md", "docs/09-release/ga-security-review.md", "docs/08-security/threat-model.md"]
+    },
+    {
+      "role": "operations",
+      "reviewer": "khovan123",
+      "human": true,
+      "decision": "approved_for_ga",
+      "reviewed_at": "2026-07-22T18:12:21Z",
+      "evidence": ["docs/09-release/ga-authorization.md", "docs/09-release/ga-operations-review.md", "docs/10-deployment/service-mode-operations.md"]
+    }
+  ]
+}
