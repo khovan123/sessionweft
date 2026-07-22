@@ -604,7 +604,6 @@ mod tests {
         sync::Arc,
     };
 
-    use chrono::Utc;
     use sessionweft_core::SessionId;
     use sessionweft_execution::{AgentManifest, AgentRole, AgentService, Capability};
     use sessionweft_execution_sqlite::SqliteAgentRepository;
