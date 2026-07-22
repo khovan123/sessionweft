@@ -11,13 +11,30 @@ permissions:
 jobs:
   rust:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Export finalized dependency lockfile
+        if: github.head_ref == 'release/production-hardening'
+        run: |
+          cargo generate-lockfile
+          if grep -q 'name = "rsa"' Cargo.lock; then
+            echo "rsa remains in Cargo.lock" >&2
+            exit 1
+          fi
+          cp Cargo.lock Cargo.lock.final
+      - name: Upload finalized dependency lockfile
+        if: github.head_ref == 'release/production-hardening'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardening-cargo-lock
+          path: Cargo.lock.final
+          if-no-files-found: error
+          retention-days: 3
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
