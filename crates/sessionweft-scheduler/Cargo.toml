@@ -1,0 +1,17 @@
+[package]
+name = "sessionweft-scheduler"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+serde.workspace = true
+sessionweft-core = { path = "../sessionweft-core" }
+sessionweft-execution = { path = "../sessionweft-execution" }
+sessionweft-orchestration = { path = "../sessionweft-orchestration" }
+thiserror.workspace = true
+uuid.workspace = true
