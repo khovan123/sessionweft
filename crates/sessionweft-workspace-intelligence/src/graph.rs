@@ -3,8 +3,8 @@ use std::{
     path::Path,
 };
 
-use crate::{DependencyEdge, DependencyKind, IndexedFile, SymbolId};
 use crate::parser::{hash_parts, normalize_path};
+use crate::{DependencyEdge, DependencyKind, IndexedFile, SymbolId};
 
 pub(crate) fn build_edges(files: &BTreeMap<String, IndexedFile>) -> Vec<DependencyEdge> {
     let mut edges = Vec::new();
