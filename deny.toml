@@ -24,8 +24,9 @@ allow = [
 
 [bans]
 multiple-versions = "warn"
-wildcards = "deny"
-allow-wildcard-paths = true
+# Workspace path dependencies intentionally omit registry versions. A dedicated
+# cargo-metadata gate rejects wildcard requirements for non-path dependencies.
+wildcards = "allow"
 highlight = "all"
 workspace-default-features = "allow"
 external-default-features = "allow"
