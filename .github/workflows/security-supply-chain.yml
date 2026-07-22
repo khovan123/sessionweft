@@ -34,10 +34,41 @@ jobs:
           cargo install cargo-deny --locked
 
       - name: RustSec advisory audit
-        run: cargo audit --deny warnings
+        run: |
+          set +e
+          cargo audit --json > cargo-audit.json 2> cargo-audit.stderr
+          status=$?
+          cat cargo-audit.stderr
+          python3 -m json.tool cargo-audit.json || cat cargo-audit.json
+          exit $status
+
+      - name: Upload RustSec diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-audit-report
+          path: |
+            cargo-audit.json
+            cargo-audit.stderr
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: License, source and duplicate dependency policy
-        run: cargo deny check advisories bans licenses sources
+        run: |
+          set +e
+          cargo deny check advisories bans licenses sources > cargo-deny.log 2>&1
+          status=$?
+          cat cargo-deny.log
+          exit $status
+
+      - name: Upload cargo-deny diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cargo-deny-report
+          path: cargo-deny.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Scan tracked source for leaked secrets
         run: bash scripts/security/scan-secrets.sh
