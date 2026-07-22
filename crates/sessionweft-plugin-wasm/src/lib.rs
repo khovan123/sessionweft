@@ -181,9 +181,7 @@ fn invoke_blocking(
         .map_err(|error| WasmPluginError::Abi(format!("invalid '{ABI_INVOKE}': {error}")))?;
     let input_len = i32::try_from(input.len())
         .map_err(|_| WasmPluginError::Abi("input length exceeds i32 ABI".into()))?;
-    let input_ptr = alloc
-        .call(&mut store, input_len)
-        .map_err(runtime_error)?;
+    let input_ptr = alloc.call(&mut store, input_len).map_err(runtime_error)?;
     let input_offset = pointer_to_usize(input_ptr)?;
     memory
         .write(&mut store, input_offset, input)

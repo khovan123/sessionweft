@@ -119,7 +119,9 @@ pub fn evaluate(
     }
     for path in &manifest.source_paths {
         if !is_safe_relative_path(path) {
-            blockers.push(format!("adapter source path '{path}' is not a safe relative path"));
+            blockers.push(format!(
+                "adapter source path '{path}' is not a safe relative path"
+            ));
         } else if !repository_root.join(path).exists() {
             blockers.push(format!("adapter source path '{path}' does not exist"));
         }
@@ -166,10 +168,8 @@ pub fn evaluate_directory(
             continue;
         }
         let manifest = load_manifest(&path)?;
-        let certification_path = certifications_directory.join(format!(
-            "{}-{}.json",
-            manifest.adapter_id, manifest.version
-        ));
+        let certification_path = certifications_directory
+            .join(format!("{}-{}.json", manifest.adapter_id, manifest.version));
         if !certification_path.exists() {
             reports.push(CertificationReport {
                 passed: false,
