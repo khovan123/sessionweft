@@ -11,28 +11,13 @@ permissions:
 jobs:
   rust:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Materialize SQLx dependency cleanup artifact
-        if: github.head_ref == 'release/production-hardening'
-        run: |
-          cargo generate-lockfile
-          cargo tree -i rsa > rsa-tree.log 2>&1 || true
-          cargo tree -i sqlx-mysql > sqlx-mysql-tree.log 2>&1 || true
-          tar -czf sqlx-audit-fix.tar.gz Cargo.lock rsa-tree.log sqlx-mysql-tree.log
-      - name: Upload SQLx dependency cleanup artifact
-        if: github.head_ref == 'release/production-hardening'
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlx-audit-fix
-          path: sqlx-audit-fix.tar.gz
-          if-no-files-found: error
-          retention-days: 3
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
