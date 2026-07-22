@@ -1,7 +1,6 @@
 use std::{str::FromStr, time::Duration as StdDuration};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use sessionweft_core::EventEnvelope;
 use sessionweft_mcp::{
     ConsumeApprovalCommand, IssueApprovalCommand, McpApprovalRecord, McpApprovalRepository,
@@ -203,9 +202,7 @@ impl McpApprovalRepository for SqliteMcpApprovalRepository {
         let mut record = Self::load(&mut transaction, command.grant_id).await?;
         if record.consumed_at.is_some() {
             transaction.rollback().await.map_err(backend)?;
-            return Err(McpApprovalRepositoryError::AlreadyConsumed(
-                command.grant_id,
-            ));
+            return Err(McpApprovalRepositoryError::AlreadyConsumed(command.grant_id));
         }
         if record.grant.expires_at <= command.consumed_at {
             transaction.rollback().await.map_err(backend)?;
@@ -236,9 +233,7 @@ impl McpApprovalRepository for SqliteMcpApprovalRepository {
         .map_err(backend)?;
         if result.rows_affected() != 1 {
             transaction.rollback().await.map_err(backend)?;
-            return Err(McpApprovalRepositoryError::AlreadyConsumed(
-                command.grant_id,
-            ));
+            return Err(McpApprovalRepositoryError::AlreadyConsumed(command.grant_id));
         }
         Self::insert_event(
             &mut transaction,
@@ -272,7 +267,7 @@ fn backend(error: impl std::fmt::Display) -> McpApprovalRepositoryError {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Duration;
+    use chrono::{Duration, Utc};
     use sessionweft_core::SessionId;
     use sessionweft_execution::ApprovalGrant;
     use sessionweft_mcp::{
