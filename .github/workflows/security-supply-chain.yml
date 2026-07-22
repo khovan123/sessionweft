@@ -33,10 +33,25 @@ jobs:
           cargo install cargo-audit --locked
           cargo install cargo-deny --locked
 
+      - name: Prove optional SQLx RSA packages are inactive
+        run: |
+          if cargo tree -i rsa --target all > rsa-tree.log 2>&1; then
+            cat rsa-tree.log
+            echo "rsa is active in the build graph" >&2
+            exit 1
+          fi
+          if cargo tree -i sqlx-mysql --target all > sqlx-mysql-tree.log 2>&1; then
+            cat sqlx-mysql-tree.log
+            echo "sqlx-mysql is active in the build graph" >&2
+            exit 1
+          fi
+          cat rsa-tree.log
+          cat sqlx-mysql-tree.log
+
       - name: RustSec advisory audit
         run: |
           set +e
-          cargo audit --json > cargo-audit.json 2> cargo-audit.stderr
+          cargo audit --ignore RUSTSEC-2023-0071 --json > cargo-audit.json 2> cargo-audit.stderr
           status=$?
           cat cargo-audit.stderr
           python3 -m json.tool cargo-audit.json || cat cargo-audit.json
@@ -50,6 +65,8 @@ jobs:
           path: |
             cargo-audit.json
             cargo-audit.stderr
+            rsa-tree.log
+            sqlx-mysql-tree.log
           if-no-files-found: warn
           retention-days: 7
 
