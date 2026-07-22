@@ -4,7 +4,9 @@ use sessionweft_core::{Session, SessionId};
 use sessionweft_execution::{
     AgentManifest, AgentRecord, AgentRepository, AgentService, ExecutionError,
 };
-use sessionweft_knowledge::{KnowledgeError, MemoryRecord, MemoryRepository, MemoryService};
+use sessionweft_knowledge::{
+    KnowledgeError, MemoryHit, MemoryQuery, MemoryRecord, MemoryRepository, MemoryService,
+};
 use sessionweft_orchestration::{
     LockLease, LockRequest, OrchestrationError, OrchestrationRepository, OrchestrationService,
     WorkflowDefinition, WorkflowExecution,
@@ -209,6 +211,111 @@ where
             .map_err(ControlPlaneError::Orchestration)
     }
 
+    pub async fn get_workflow(
+        &self,
+        session_id: SessionId,
+        workflow_id: Uuid,
+    ) -> Result<WorkflowExecution, ControlPlaneError> {
+        self.ensure_session(session_id).await?;
+        let workflow = self
+            .orchestration
+            .get_workflow(workflow_id)
+            .await
+            .map_err(ControlPlaneError::Orchestration)?;
+        ensure_scope("workflow", session_id, workflow.session_id)?;
+        Ok(workflow)
+    }
+
+    pub async fn start_workflow_node(
+        &self,
+        session_id: SessionId,
+        workflow_id: Uuid,
+        expected_version: u64,
+        node_id: &str,
+        owner_id: impl Into<String>,
+        context: &OperationContext,
+    ) -> Result<WorkflowExecution, ControlPlaneError> {
+        self.get_workflow(session_id, workflow_id).await?;
+        self.orchestration
+            .start_node(
+                workflow_id,
+                expected_version,
+                node_id,
+                owner_id,
+                context.correlation_id,
+                context.actor_id(),
+            )
+            .await
+            .map_err(ControlPlaneError::Orchestration)
+    }
+
+    pub async fn complete_workflow_node(
+        &self,
+        session_id: SessionId,
+        workflow_id: Uuid,
+        expected_version: u64,
+        node_id: &str,
+        context: &OperationContext,
+    ) -> Result<WorkflowExecution, ControlPlaneError> {
+        self.get_workflow(session_id, workflow_id).await?;
+        self.orchestration
+            .complete_node(
+                workflow_id,
+                expected_version,
+                node_id,
+                context.correlation_id,
+                context.actor_id(),
+            )
+            .await
+            .map_err(ControlPlaneError::Orchestration)
+    }
+
+    pub async fn fail_workflow_node(
+        &self,
+        session_id: SessionId,
+        workflow_id: Uuid,
+        expected_version: u64,
+        node_id: &str,
+        sanitized_error: impl Into<String>,
+        context: &OperationContext,
+    ) -> Result<WorkflowExecution, ControlPlaneError> {
+        self.get_workflow(session_id, workflow_id).await?;
+        self.orchestration
+            .fail_node(
+                workflow_id,
+                expected_version,
+                node_id,
+                sanitized_error,
+                context.correlation_id,
+                context.actor_id(),
+            )
+            .await
+            .map_err(ControlPlaneError::Orchestration)
+    }
+
+    pub async fn decide_workflow_approval(
+        &self,
+        session_id: SessionId,
+        workflow_id: Uuid,
+        expected_version: u64,
+        node_id: &str,
+        approved: bool,
+        context: &OperationContext,
+    ) -> Result<WorkflowExecution, ControlPlaneError> {
+        self.get_workflow(session_id, workflow_id).await?;
+        self.orchestration
+            .decide_approval(
+                workflow_id,
+                expected_version,
+                node_id,
+                approved,
+                context.correlation_id,
+                context.actor_id(),
+            )
+            .await
+            .map_err(ControlPlaneError::Orchestration)
+    }
+
     pub async fn acquire_lock(
         &self,
         request: &LockRequest,
@@ -221,6 +328,62 @@ where
             .map_err(ControlPlaneError::Orchestration)
     }
 
+    pub async fn heartbeat_lock(
+        &self,
+        session_id: SessionId,
+        lock_id: Uuid,
+        owner_id: &str,
+        fencing_token: u64,
+        ttl_seconds: u32,
+        context: &OperationContext,
+    ) -> Result<LockLease, ControlPlaneError> {
+        self.ensure_session(session_id).await?;
+        self.orchestration
+            .heartbeat_lock(
+                lock_id,
+                owner_id,
+                fencing_token,
+                ttl_seconds,
+                context.correlation_id,
+                context.actor_id(),
+            )
+            .await
+            .map_err(ControlPlaneError::Orchestration)
+    }
+
+    pub async fn release_lock(
+        &self,
+        session_id: SessionId,
+        lock_id: Uuid,
+        owner_id: &str,
+        fencing_token: u64,
+        context: &OperationContext,
+    ) -> Result<(), ControlPlaneError> {
+        self.ensure_session(session_id).await?;
+        self.orchestration
+            .release_lock(
+                lock_id,
+                owner_id,
+                fencing_token,
+                context.correlation_id,
+                context.actor_id(),
+            )
+            .await
+            .map_err(ControlPlaneError::Orchestration)
+    }
+
+    pub async fn list_locks(
+        &self,
+        session_id: SessionId,
+        workspace_id: &str,
+    ) -> Result<Vec<LockLease>, ControlPlaneError> {
+        self.ensure_session(session_id).await?;
+        self.orchestration
+            .list_locks(workspace_id)
+            .await
+            .map_err(ControlPlaneError::Orchestration)
+    }
+
     pub async fn remember(
         &self,
         record: MemoryRecord,
@@ -229,6 +392,35 @@ where
         self.ensure_session(record.session_id).await?;
         self.memories
             .remember(record, context.correlation_id, context.actor_id())
+            .await
+            .map_err(ControlPlaneError::Knowledge)
+    }
+
+    pub async fn search_memories(
+        &self,
+        query: &MemoryQuery,
+    ) -> Result<Vec<MemoryHit>, ControlPlaneError> {
+        self.ensure_session(query.session_id).await?;
+        self.memories
+            .search(query)
+            .await
+            .map_err(ControlPlaneError::Knowledge)
+    }
+
+    pub async fn forget_memory(
+        &self,
+        session_id: SessionId,
+        memory_id: Uuid,
+        context: &OperationContext,
+    ) -> Result<(), ControlPlaneError> {
+        self.ensure_session(session_id).await?;
+        self.memories
+            .forget(
+                session_id,
+                memory_id,
+                context.correlation_id,
+                context.actor_id(),
+            )
             .await
             .map_err(ControlPlaneError::Knowledge)
     }
@@ -280,7 +472,7 @@ mod tests {
     use sessionweft_knowledge::{MemoryClass, MemorySource};
     use sessionweft_knowledge_sqlite::SqliteMemoryRepository;
     use sessionweft_orchestration::{
-        LockMode, LockResource, WorkflowNodeDefinition, WorkflowNodeKind,
+        LockMode, LockResource, WorkflowNodeDefinition, WorkflowNodeKind, WorkflowStatus,
     };
     use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
     use sessionweft_provider::{EchoProvider, ProviderRegistry};
@@ -333,6 +525,21 @@ mod tests {
         }
     }
 
+    fn workflow_definition() -> WorkflowDefinition {
+        WorkflowDefinition {
+            name: "single-task".into(),
+            version: 1,
+            nodes: vec![WorkflowNodeDefinition {
+                id: "task".into(),
+                kind: WorkflowNodeKind::Task,
+                dependencies: Vec::new(),
+                max_attempts: 1,
+                continue_on_failure: false,
+                fallback: None,
+            }],
+        }
+    }
+
     #[tokio::test]
     async fn control_plane_coordinates_session_scoped_operations() {
         let control_plane = control_plane().await;
@@ -353,25 +560,25 @@ mod tests {
         assert_eq!(agent.status, AgentStatus::Running);
 
         let workflow = control_plane
-            .create_workflow(
+            .create_workflow(session.id, workflow_definition(), &context)
+            .await
+            .expect("workflow");
+        let workflow = control_plane
+            .start_workflow_node(
                 session.id,
-                WorkflowDefinition {
-                    name: "single-task".into(),
-                    version: 1,
-                    nodes: vec![WorkflowNodeDefinition {
-                        id: "task".into(),
-                        kind: WorkflowNodeKind::Task,
-                        dependencies: Vec::new(),
-                        max_attempts: 1,
-                        continue_on_failure: false,
-                        fallback: None,
-                    }],
-                },
+                workflow.id,
+                workflow.version,
+                "task",
+                agent.id.to_string(),
                 &context,
             )
             .await
-            .expect("workflow");
-        assert_eq!(workflow.session_id, session.id);
+            .expect("start workflow node");
+        let workflow = control_plane
+            .complete_workflow_node(session.id, workflow.id, workflow.version, "task", &context)
+            .await
+            .expect("complete workflow node");
+        assert_eq!(workflow.status, WorkflowStatus::Succeeded);
 
         let lease = control_plane
             .acquire_lock(
@@ -388,7 +595,42 @@ mod tests {
             )
             .await
             .expect("lock");
-        assert_eq!(lease.session_id, session.id);
+        let lease = control_plane
+            .heartbeat_lock(
+                session.id,
+                lease.lock_id,
+                &lease.owner_id,
+                lease.fencing_token,
+                30,
+                &context,
+            )
+            .await
+            .expect("heartbeat lock");
+        assert_eq!(
+            control_plane
+                .list_locks(session.id, "workspace")
+                .await
+                .expect("list locks")
+                .len(),
+            1
+        );
+        control_plane
+            .release_lock(
+                session.id,
+                lease.lock_id,
+                &lease.owner_id,
+                lease.fencing_token,
+                &context,
+            )
+            .await
+            .expect("release lock");
+        assert!(
+            control_plane
+                .list_locks(session.id, "workspace")
+                .await
+                .expect("list released locks")
+                .is_empty()
+        );
 
         let memory = MemoryRecord::new(
             session.id,
@@ -406,7 +648,32 @@ mod tests {
             .remember(memory, &context)
             .await
             .expect("remember");
-        assert_eq!(memory.session_id, session.id);
+        let hits = control_plane
+            .search_memories(&MemoryQuery {
+                session_id: session.id,
+                text: "Runtime state".into(),
+                classes: BTreeSet::from([MemoryClass::Decision]),
+                tags: BTreeSet::new(),
+                limit: 10,
+            })
+            .await
+            .expect("search memories");
+        assert_eq!(hits.len(), 1);
+        control_plane
+            .forget_memory(session.id, memory.id, &context)
+            .await
+            .expect("forget memory");
+        let hits = control_plane
+            .search_memories(&MemoryQuery {
+                session_id: session.id,
+                text: "Runtime state".into(),
+                classes: BTreeSet::from([MemoryClass::Decision]),
+                tags: BTreeSet::new(),
+                limit: 10,
+            })
+            .await
+            .expect("search deleted memory");
+        assert!(hits.is_empty());
     }
 
     #[tokio::test]
