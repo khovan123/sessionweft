@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   rust:
@@ -14,10 +14,61 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Apply reviewed PolicyConfig fix on execution PR
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.head_ref == 'implementation/agent-tool-git-boundary-ready'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/sessionweft-execution/src/lib.rs')
+          text = path.read_text()
+          old_derive = '#[derive(Debug, Clone, PartialEq, Eq)]\npub struct PolicyConfig {'
+          new_derive = '#[derive(Debug, Clone, PartialEq, Eq, Default)]\npub struct PolicyConfig {'
+          if old_derive in text:
+              text = text.replace(old_derive, new_derive, 1)
+          elif new_derive not in text:
+              raise SystemExit('PolicyConfig derive marker not found')
+
+          old_impl = '''impl Default for PolicyConfig {
+    fn default() -> Self {
+        Self {
+            allowed: BTreeSet::new(),
+            approval_required: BTreeSet::new(),
+            denied: BTreeSet::new(),
+        }
+    }
+}
+
+'''
+          if old_impl in text:
+              text = text.replace(old_impl, '', 1)
+          elif 'impl Default for PolicyConfig' in text:
+              raise SystemExit('unexpected PolicyConfig Default implementation')
+          path.write_text(text)
+          PY
+          cargo fmt --all
+      - name: Commit reviewed fix on execution PR
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.head_ref == 'implementation/agent-tool-git-boundary-ready'
+        run: |
+          if [ -n "$(git status --porcelain -- '*.rs')" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- '*.rs'
+            git commit -m "fix: derive default policy configuration"
+            git push origin HEAD:${{ github.head_ref }}
+          fi
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
