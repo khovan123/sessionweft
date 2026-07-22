@@ -1,0 +1,65 @@
+name: fix-execution-clippy
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: >-
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.head_branch == 'implementation/agent-tool-git-boundary-ready'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: implementation/agent-tool-git-boundary-ready
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Apply reviewed Clippy fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('crates/sessionweft-execution/src/lib.rs')
+          text = path.read_text()
+          old_derive = '#[derive(Debug, Clone, PartialEq, Eq)]\npub struct PolicyConfig {'
+          new_derive = '#[derive(Debug, Clone, PartialEq, Eq, Default)]\npub struct PolicyConfig {'
+          if old_derive in text:
+              text = text.replace(old_derive, new_derive, 1)
+          elif new_derive not in text:
+              raise SystemExit('PolicyConfig derive marker not found')
+
+          old_impl = '''impl Default for PolicyConfig {
+    fn default() -> Self {
+        Self {
+            allowed: BTreeSet::new(),
+            approval_required: BTreeSet::new(),
+            denied: BTreeSet::new(),
+        }
+    }
+}
+
+'''
+          if old_impl in text:
+              text = text.replace(old_impl, '', 1)
+          elif 'impl Default for PolicyConfig' in text:
+              raise SystemExit('unexpected PolicyConfig Default implementation')
+          path.write_text(text)
+          PY
+          cargo fmt --all
+      - name: Commit Clippy fix
+        run: |
+          if [ -n "$(git status --porcelain -- '*.rs')" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- '*.rs'
+            git commit -m "fix: derive default policy configuration"
+            git push origin HEAD:implementation/agent-tool-git-boundary-ready
+          fi
