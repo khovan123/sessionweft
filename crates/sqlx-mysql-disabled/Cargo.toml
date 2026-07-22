@@ -1,0 +1,24 @@
+[package]
+name = "sqlx-mysql"
+version = "0.8.6"
+edition = "2024"
+rust-version = "1.88"
+license = "Apache-2.0"
+repository = "https://github.com/khovan123/sessionweft"
+publish = false
+
+[features]
+default = []
+any = []
+bigdecimal = []
+chrono = []
+json = []
+migrate = []
+offline = []
+rust_decimal = []
+serde = []
+time = []
+uuid = []
+
+[lib]
+path = "src/lib.rs"

@@ -3,7 +3,7 @@ use std::time::Duration;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sessionweft_core::EventEnvelope;
-use sqlx::{PgPool, Postgres, Transaction, postgres::PgPoolOptions};
+use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgPoolOptions};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -311,11 +311,21 @@ pub struct ClaimedOutboxEvent {
     pub publish_attempts: u32,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug)]
 struct ClaimedOutboxRow {
     event_id: Uuid,
     payload_json: serde_json::Value,
     publish_attempts: i32,
+}
+
+impl<'row> sqlx::FromRow<'row, sqlx::postgres::PgRow> for ClaimedOutboxRow {
+    fn from_row(row: &'row sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        Ok(Self {
+            event_id: row.try_get("event_id")?,
+            payload_json: row.try_get("payload_json")?,
+            publish_attempts: row.try_get("publish_attempts")?,
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -326,12 +336,23 @@ pub struct TaskClaim {
     pub expires_at: DateTime<Utc>,
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug)]
 struct TaskClaimRow {
     task_id: String,
     owner_id: String,
     claim_token: Uuid,
     expires_at: DateTime<Utc>,
+}
+
+impl<'row> sqlx::FromRow<'row, sqlx::postgres::PgRow> for TaskClaimRow {
+    fn from_row(row: &'row sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        Ok(Self {
+            task_id: row.try_get("task_id")?,
+            owner_id: row.try_get("owner_id")?,
+            claim_token: row.try_get("claim_token")?,
+            expires_at: row.try_get("expires_at")?,
+        })
+    }
 }
 
 impl From<TaskClaimRow> for TaskClaim {

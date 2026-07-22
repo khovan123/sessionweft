@@ -24,10 +24,12 @@ members = [
   "crates/sessionweft-jetstream",
   "crates/sessionweft-client-protocol",
   "crates/sessionweft-client-protocol-sqlite",
+  "crates/sessionweft-release-gate",
   "apps/sessionweftd",
   "apps/sessionweft-cli",
   "apps/sessionweft-tui",
 ]
+exclude = ["crates/sqlx-mysql-disabled"]
 resolver = "2"
 
 [workspace.package]
@@ -55,7 +57,7 @@ rmcp = { version = "2.2", default-features = false, features = ["client", "trans
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_urlencoded = "0.7"
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "postgres", "chrono", "uuid", "json", "derive"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "sqlite", "postgres", "chrono", "uuid", "json"] }
 thiserror = "2"
 tokio = { version = "1", features = ["fs", "io-util", "macros", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
@@ -69,3 +71,6 @@ tree-sitter-python = "0.25.0"
 tree-sitter-rust = "0.24.2"
 tree-sitter-typescript = "0.23.2"
 uuid = { version = "1", features = ["serde", "v4"] }
+
+[patch.crates-io]
+sqlx-mysql = { path = "crates/sqlx-mysql-disabled" }

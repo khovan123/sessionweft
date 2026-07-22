@@ -1,0 +1,175 @@
+name: production-hardening
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "apps/**"
+      - "scripts/chaos/**"
+      - "scripts/drills/**"
+      - "scripts/bench/**"
+      - "scripts/security/**"
+      - "scripts/ops/**"
+      - "scripts/release/**"
+      - "release/**"
+      - "deploy/observability/**"
+      - "docs/08-security/**"
+      - "docs/09-release/**"
+      - "docs/10-deployment/**"
+      - ".github/workflows/production-hardening.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-hardening-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hardening:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      POSTGRES_CONTAINER: sessionweft-hardening-postgres
+      NATS_CONTAINER: sessionweft-hardening-nats
+      SESSIONWEFT_TEST_POSTGRES_URL: postgres://sessionweft:sessionweft@127.0.0.1:5432/sessionweft
+      SESSIONWEFT_TEST_NATS_URL: nats://127.0.0.1:4222
+      SESSIONWEFT_DATABASE_URL: postgres://sessionweft:sessionweft@127.0.0.1:5432/sessionweft
+      SESSIONWEFT_NATS_MONITOR_URL: http://127.0.0.1:8222
+      SESSIONWEFT_CAPACITY_FILES: "10000"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Verify locked source quality
+        run: |
+          cargo metadata --locked --format-version 1 --no-deps > /dev/null
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+
+      - name: Verify release-specific recovery and performance contracts
+        run: |
+          cargo test -p sessionweft-release-gate --test performance_contracts --locked
+          cargo test -p sessionweft-release-gate --test provider_outage --locked
+          cargo test -p sessionweft-client-protocol-sqlite --test restart --locked
+          cargo test -p sessionweft-client-protocol --test pty --locked
+          cargo test -p sessionweft-mcp --test malicious --locked
+
+      - name: Start PostgreSQL and NATS JetStream
+        run: |
+          docker rm -f "$POSTGRES_CONTAINER" "$NATS_CONTAINER" >/dev/null 2>&1 || true
+          docker run --detach --rm --name "$POSTGRES_CONTAINER" \
+            --publish 5432:5432 \
+            --env POSTGRES_USER=sessionweft \
+            --env POSTGRES_PASSWORD=sessionweft \
+            --env POSTGRES_DB=sessionweft \
+            postgres:17-alpine
+          docker run --detach --rm --name "$NATS_CONTAINER" \
+            --publish 4222:4222 \
+            --publish 8222:8222 \
+            nats:2.14.1-alpine -js -m 8222
+          for attempt in $(seq 1 60); do
+            if docker exec "$POSTGRES_CONTAINER" pg_isready -U sessionweft -d sessionweft >/dev/null 2>&1 \
+              && (echo > /dev/tcp/127.0.0.1/4222) >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs "$POSTGRES_CONTAINER" || true
+          docker logs "$NATS_CONTAINER" || true
+          exit 1
+
+      - name: Run multi-Runtime ownership and contention profiles
+        run: |
+          cargo test -p sessionweft-service-postgres \
+            --test service_mode --locked -- --ignored --test-threads=1
+          cargo test -p sessionweft-service-postgres \
+            --test contention --locked -- --ignored --test-threads=1
+
+      - name: Run service-mode chaos and redelivery drills
+        run: bash scripts/chaos/service-mode-chaos.sh
+
+      - name: Run PostgreSQL backup and restore drill
+        run: bash scripts/drills/postgres-backup-restore.sh
+
+      - name: Run migration compatibility drill
+        run: bash scripts/drills/migration-compatibility.sh
+
+      - name: Verify workspace release capacity budget
+        run: bash scripts/bench/workspace-capacity.sh
+
+      - name: Scan tracked source for leaked secrets
+        run: bash scripts/security/scan-secrets.sh
+
+      - name: Validate operational assets and exporter
+        env:
+          SESSIONWEFT_RUNTIME_URL: http://127.0.0.1:9
+        run: |
+          python3 -m json.tool deploy/observability/sessionweft-dashboard.json >/dev/null
+          python3 -m json.tool release/release-policy.json >/dev/null
+          python3 -m json.tool release/evidence/rc-0.1.0.json >/dev/null
+          bash scripts/ops/export-metrics.sh > sessionweft.prom
+          grep -q '^sessionweft_outbox_pending_events ' sessionweft.prom
+          grep -q '^sessionweft_jetstream_streams ' sessionweft.prom
+
+      - name: Materialize tested release evidence
+        run: |
+          python3 scripts/release/materialize-evidence.py \
+            --template release/evidence/rc-0.1.0.json \
+            --output release/evidence/verified.json \
+            --commit "$GITHUB_SHA"
+          cargo run -p sessionweft-release-gate --locked -- \
+            --policy release/release-policy.json \
+            --evidence release/evidence/verified.json \
+            --level preflight
+          cargo run -p sessionweft-release-gate --locked -- \
+            --policy release/release-policy.json \
+            --evidence release/evidence/verified.json \
+            --level rc
+          if cargo run -p sessionweft-release-gate --locked -- \
+            --policy release/release-policy.json \
+            --evidence release/evidence/verified.json \
+            --level ga; then
+            echo "Automated evidence must not authorize General Availability" >&2
+            exit 1
+          fi
+
+      - name: Build reproducible release package
+        env:
+          RELEASE_EVIDENCE_PATH: release/evidence/verified.json
+        run: bash scripts/release/package.sh 0.1.0-rc.1
+
+      - name: Upload release-gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-hardening-evidence
+          path: |
+            release/evidence/verified.json
+            sessionweft.prom
+            dist/*.tar.gz
+            dist/*.sha256
+            deploy/observability/prometheus-alerts.yml
+            deploy/observability/sessionweft-dashboard.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          docker logs "$POSTGRES_CONTAINER" || true
+          docker logs "$NATS_CONTAINER" || true
+          docker ps -a || true
+
+      - name: Cleanup service containers
+        if: always()
+        run: docker rm -f "$POSTGRES_CONTAINER" "$NATS_CONTAINER" >/dev/null 2>&1 || true
