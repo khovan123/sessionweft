@@ -362,7 +362,10 @@ impl BillingRepository for PostgresBillingRepository {
         }
 
         if let (Some(provider_subscription_id), Some(status)) = (
-            event.payload.get("provider_subscription_id").and_then(|value| value.as_str()),
+            event
+                .payload
+                .get("provider_subscription_id")
+                .and_then(|value| value.as_str()),
             event.payload.get("status").and_then(|value| value.as_str()),
         ) {
             let status = SubscriptionStatus::from_str(status)?;

@@ -488,7 +488,10 @@ fn tenant_from_row(row: sqlx::postgres::PgRow) -> Result<Tenant, TenancyError> {
         id: TenantId::from_uuid(row.try_get("id").map_err(repository_error)?),
         slug: row.try_get("slug").map_err(repository_error)?,
         display_name: row.try_get("display_name").map_err(repository_error)?,
-        status: status_from_text(&row.try_get::<String, _>("status").map_err(repository_error)?)?,
+        status: status_from_text(
+            &row.try_get::<String, _>("status")
+                .map_err(repository_error)?,
+        )?,
         created_at: row.try_get("created_at").map_err(repository_error)?,
         updated_at: row.try_get("updated_at").map_err(repository_error)?,
     })

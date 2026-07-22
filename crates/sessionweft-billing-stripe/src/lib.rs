@@ -32,8 +32,9 @@ impl StripeBillingConfig {
     pub fn validate(&self) -> Result<(), BillingError> {
         validate_secret("Stripe secret key", &self.secret_key)?;
         validate_secret("Stripe webhook secret", &self.webhook_secret)?;
-        let endpoint = reqwest::Url::parse(&self.api_base)
-            .map_err(|error| BillingError::Validation(format!("invalid Stripe API base: {error}")))?;
+        let endpoint = reqwest::Url::parse(&self.api_base).map_err(|error| {
+            BillingError::Validation(format!("invalid Stripe API base: {error}"))
+        })?;
         if endpoint.scheme() != "https"
             && !(endpoint.scheme() == "http"
                 && endpoint
@@ -149,10 +150,7 @@ impl StripeBillingProvider {
             .and_then(|value| value.to_str().ok())
             .unwrap_or("unknown")
             .to_owned();
-        let body = response
-            .bytes()
-            .await
-            .map_err(map_transport_error)?;
+        let body = response.bytes().await.map_err(map_transport_error)?;
         if !status.is_success() {
             return Err(provider_http_error(status, &request_id, &body));
         }
@@ -222,9 +220,12 @@ impl BillingProvider for StripeBillingProvider {
         subscription: &Subscription,
         usage: &UsageRecord,
     ) -> Result<ProviderUsageReceipt, BillingError> {
-        let customer_id = subscription.provider_customer_id.as_deref().ok_or_else(|| {
-            BillingError::Validation("Stripe customer ID is missing from subscription".into())
-        })?;
+        let customer_id = subscription
+            .provider_customer_id
+            .as_deref()
+            .ok_or_else(|| {
+                BillingError::Validation("Stripe customer ID is missing from subscription".into())
+            })?;
         let event_name = self
             .config
             .meter_event_names
@@ -240,13 +241,13 @@ impl BillingProvider for StripeBillingProvider {
                 "/v1/billing/meter_events",
                 &[
                     ("event_name".into(), event_name.clone()),
-                    (
-                        "payload[stripe_customer_id]".into(),
-                        customer_id.to_owned(),
-                    ),
+                    ("payload[stripe_customer_id]".into(), customer_id.to_owned()),
                     ("payload[value]".into(), usage.quantity.to_string()),
                     ("identifier".into(), usage.idempotency_key.clone()),
-                    ("timestamp".into(), usage.occurred_at.timestamp().to_string()),
+                    (
+                        "timestamp".into(),
+                        usage.occurred_at.timestamp().to_string(),
+                    ),
                 ],
                 &usage.idempotency_key,
             )
@@ -306,9 +307,8 @@ fn verify_stripe_signature(
             "Stripe signature header is missing v1 signature".into(),
         ));
     }
-    let tolerance = i64::try_from(tolerance.as_secs()).map_err(|_| {
-        BillingError::Validation("Stripe signature tolerance is too large".into())
-    })?;
+    let tolerance = i64::try_from(tolerance.as_secs())
+        .map_err(|_| BillingError::Validation("Stripe signature tolerance is too large".into()))?;
     if (now.timestamp() - timestamp).abs() > tolerance {
         return Err(BillingError::Validation(
             "Stripe webhook signature timestamp is outside tolerance".into(),
@@ -342,7 +342,9 @@ fn normalize_event(payload: &[u8]) -> Result<ProviderWebhookEvent, BillingError>
     let created = value
         .get("created")
         .and_then(serde_json::Value::as_i64)
-        .ok_or_else(|| BillingError::Validation("Stripe event created timestamp is missing".into()))?;
+        .ok_or_else(|| {
+            BillingError::Validation("Stripe event created timestamp is missing".into())
+        })?;
     let object = value
         .pointer("/data/object")
         .ok_or_else(|| BillingError::Validation("Stripe event data.object is missing".into()))?;
@@ -387,12 +389,12 @@ fn string_at(value: &serde_json::Value, path: &[&str]) -> Result<String, Billing
             BillingError::Validation(format!("Stripe event field {} is missing", path.join(".")))
         })?;
     }
-    current
-        .as_str()
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| {
-            BillingError::Validation(format!("Stripe event field {} is not a string", path.join(".")))
-        })
+    current.as_str().map(ToOwned::to_owned).ok_or_else(|| {
+        BillingError::Validation(format!(
+            "Stripe event field {} is not a string",
+            path.join(".")
+        ))
+    })
 }
 
 fn map_subscription_status(value: &str) -> Result<SubscriptionStatus, BillingError> {
@@ -482,13 +484,15 @@ mod tests {
         let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC key");
         mac.update(b"100.{}");
         let header = format!("t=100,v1={}", hex::encode(mac.finalize().into_bytes()));
-        assert!(verify_stripe_signature(
-            payload,
-            &header,
-            secret,
-            Utc.timestamp_opt(1_000, 0).single().expect("time"),
-            Duration::from_secs(300),
-        )
-        .is_err());
+        assert!(
+            verify_stripe_signature(
+                payload,
+                &header,
+                secret,
+                Utc.timestamp_opt(1_000, 0).single().expect("time"),
+                Duration::from_secs(300),
+            )
+            .is_err()
+        );
     }
 }

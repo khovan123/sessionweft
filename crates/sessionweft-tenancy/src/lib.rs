@@ -120,7 +120,10 @@ pub struct Tenant {
 }
 
 impl Tenant {
-    pub fn new(slug: impl Into<String>, display_name: impl Into<String>) -> Result<Self, TenancyError> {
+    pub fn new(
+        slug: impl Into<String>,
+        display_name: impl Into<String>,
+    ) -> Result<Self, TenancyError> {
         let slug = normalize_slug(slug.into())?;
         let display_name = display_name.into().trim().to_owned();
         if display_name.is_empty() || display_name.len() > 256 {
@@ -178,17 +181,26 @@ impl Membership {
 
     #[must_use]
     pub fn can_manage_members(&self) -> bool {
-        self.roles.iter().copied().any(TenantRole::can_manage_members)
+        self.roles
+            .iter()
+            .copied()
+            .any(TenantRole::can_manage_members)
     }
 
     #[must_use]
     pub fn can_manage_billing(&self) -> bool {
-        self.roles.iter().copied().any(TenantRole::can_manage_billing)
+        self.roles
+            .iter()
+            .copied()
+            .any(TenantRole::can_manage_billing)
     }
 
     #[must_use]
     pub fn can_mutate_runtime(&self) -> bool {
-        self.roles.iter().copied().any(TenantRole::can_mutate_runtime)
+        self.roles
+            .iter()
+            .copied()
+            .any(TenantRole::can_mutate_runtime)
     }
 }
 
@@ -322,17 +334,26 @@ impl TenantContext {
 
     #[must_use]
     pub fn can_manage_members(&self) -> bool {
-        self.roles.iter().copied().any(TenantRole::can_manage_members)
+        self.roles
+            .iter()
+            .copied()
+            .any(TenantRole::can_manage_members)
     }
 
     #[must_use]
     pub fn can_manage_billing(&self) -> bool {
-        self.roles.iter().copied().any(TenantRole::can_manage_billing)
+        self.roles
+            .iter()
+            .copied()
+            .any(TenantRole::can_manage_billing)
     }
 
     #[must_use]
     pub fn can_mutate_runtime(&self) -> bool {
-        self.roles.iter().copied().any(TenantRole::can_mutate_runtime)
+        self.roles
+            .iter()
+            .copied()
+            .any(TenantRole::can_mutate_runtime)
     }
 }
 
@@ -552,7 +573,10 @@ mod tests {
 
     #[test]
     fn tenant_slug_is_canonical() {
-        assert_eq!(Tenant::new("Acme-01", "Acme").expect("tenant").slug, "acme-01");
+        assert_eq!(
+            Tenant::new("Acme-01", "Acme").expect("tenant").slug,
+            "acme-01"
+        );
         assert!(Tenant::new("-acme", "Acme").is_err());
         assert!(Tenant::new("acme--west", "Acme").is_err());
     }

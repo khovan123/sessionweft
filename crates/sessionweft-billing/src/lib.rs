@@ -639,8 +639,14 @@ mod tests {
 
     #[test]
     fn identifiers_are_canonical() {
-        assert_eq!(PlanId::parse("Team.Monthly").expect("plan").as_str(), "team.monthly");
-        assert_eq!(MeterName::parse("Provider_Tokens").expect("meter").as_str(), "provider_tokens");
+        assert_eq!(
+            PlanId::parse("Team.Monthly").expect("plan").as_str(),
+            "team.monthly"
+        );
+        assert_eq!(
+            MeterName::parse("Provider_Tokens").expect("meter").as_str(),
+            "provider_tokens"
+        );
         assert!(PlanId::parse("bad plan").is_err());
     }
 

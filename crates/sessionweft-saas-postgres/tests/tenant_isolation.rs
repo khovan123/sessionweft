@@ -57,32 +57,17 @@ async fn rls_resource_ownership_and_quota_reservations_are_tenant_isolated() {
         .await
         .expect("context");
     let first = service
-        .reserve(
-            &context,
-            QuotaDimension::ProviderTokens,
-            7,
-            "usage-1",
-        )
+        .reserve(&context, QuotaDimension::ProviderTokens, 7, "usage-1")
         .await
         .expect("first reservation");
     let replay = service
-        .reserve(
-            &context,
-            QuotaDimension::ProviderTokens,
-            7,
-            "usage-1",
-        )
+        .reserve(&context, QuotaDimension::ProviderTokens, 7, "usage-1")
         .await
         .expect("replay");
     assert_eq!(first, replay);
     assert!(
         service
-            .reserve(
-                &context,
-                QuotaDimension::ProviderTokens,
-                4,
-                "usage-2",
-            )
+            .reserve(&context, QuotaDimension::ProviderTokens, 4, "usage-2",)
             .await
             .is_err()
     );
@@ -105,14 +90,16 @@ async fn rls_resource_ownership_and_quota_reservations_are_tenant_isolated() {
             .expect("right ownership")
     );
 
-    let mut right_transaction = database.begin_tenant(right.id).await.expect("right transaction");
-    let visible = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM sessionweft_tenants WHERE id = $1",
-    )
-    .bind(left.id.as_uuid())
-    .fetch_one(&mut *right_transaction)
-    .await
-    .expect("RLS query");
+    let mut right_transaction = database
+        .begin_tenant(right.id)
+        .await
+        .expect("right transaction");
+    let visible =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM sessionweft_tenants WHERE id = $1")
+            .bind(left.id.as_uuid())
+            .fetch_one(&mut *right_transaction)
+            .await
+            .expect("RLS query");
     right_transaction.commit().await.expect("commit");
     assert_eq!(visible, 0, "RLS must hide another tenant's row");
 }
@@ -155,14 +142,9 @@ async fn billing_repository_cannot_cross_tenant_boundary() {
     };
     left_billing.upsert_plan(&plan).await.expect("plan upsert");
     let now = Utc::now();
-    let subscription = Subscription::pending(
-        left.id,
-        plan.id,
-        "stripe",
-        now,
-        now + Duration::days(30),
-    )
-    .expect("subscription");
+    let subscription =
+        Subscription::pending(left.id, plan.id, "stripe", now, now + Duration::days(30))
+            .expect("subscription");
     let subscription = left_billing
         .create_subscription(&subscription)
         .await
