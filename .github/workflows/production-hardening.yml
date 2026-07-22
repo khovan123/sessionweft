@@ -24,6 +24,8 @@ jobs:
         run: python scripts/hardening/secret_scan.py
       - name: Audit Rust dependencies
         run: |
+          cargo tree -i rsa -e features > rsa-dependency-tree.txt 2>&1 || true
+          cat rsa-dependency-tree.txt
           cargo install cargo-audit --version 0.22.2 --locked
           set +e
           cargo audit --json > cargo-audit.json
@@ -35,7 +37,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cargo-audit-report
-          path: cargo-audit.json
+          path: |
+            cargo-audit.json
+            rsa-dependency-tree.txt
           retention-days: 14
       - name: Generate CycloneDX SBOM
         run: |
