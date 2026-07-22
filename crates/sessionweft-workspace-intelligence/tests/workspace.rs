@@ -132,11 +132,9 @@ fn watcher_detects_changes_and_snapshot_round_trips() {
     assert!(report.changed_files.contains(&"web/helper.ts".to_owned()));
     let snapshot = directory.path().join(".sessionweft/workspace-graph.json");
     index.save_json(&snapshot).expect("save");
-    let loaded = WorkspaceIntelligence::load_json(
-        &snapshot,
-        WorkspaceIntelligenceConfig::default(),
-    )
-    .expect("load");
+    let loaded =
+        WorkspaceIntelligence::load_json(&snapshot, WorkspaceIntelligenceConfig::default())
+            .expect("load");
     assert_eq!(loaded.workspace_revision(), index.workspace_revision());
     assert_eq!(loaded.edges(), index.edges());
 }

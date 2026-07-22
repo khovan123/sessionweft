@@ -1,8 +1,6 @@
 use std::{fs, io::Write, time::Instant};
 
-use sessionweft_workspace_intelligence::{
-    WorkspaceIntelligence, WorkspaceIntelligenceConfig,
-};
+use sessionweft_workspace_intelligence::{WorkspaceIntelligence, WorkspaceIntelligenceConfig};
 
 #[test]
 fn changed_file_work_is_bounded_by_dependency_slice() {
@@ -26,11 +24,7 @@ fn changed_file_work_is_bounded_by_dependency_slice() {
     )
     .expect("build");
     assert!(started.elapsed().as_secs() < 30);
-    fs::write(
-        src.join("module_1.rs"),
-        "pub fn value_1() -> usize { 2 }\n",
-    )
-    .expect("change");
+    fs::write(src.join("module_1.rs"), "pub fn value_1() -> usize { 2 }\n").expect("change");
     let update = intelligence
         .update_paths([std::path::Path::new("src/module_1.rs")])
         .expect("incremental update");

@@ -95,7 +95,11 @@ impl WorkspaceIntelligence {
         }
         let mut changed = BTreeSet::new();
         for (path, revision) in &current {
-            if self.files.get(path).is_none_or(|file| file.revision != *revision) {
+            if self
+                .files
+                .get(path)
+                .is_none_or(|file| file.revision != *revision)
+            {
                 changed.insert(path.clone());
             }
         }
@@ -204,7 +208,10 @@ impl WorkspaceIntelligence {
                 if matched.is_empty() {
                     continue;
                 }
-                if matched.iter().any(|term| symbol.name.eq_ignore_ascii_case(term)) {
+                if matched
+                    .iter()
+                    .any(|term| symbol.name.eq_ignore_ascii_case(term))
+                {
                     score += 2.0;
                     reasons.push("exact_symbol");
                 }
@@ -277,10 +284,9 @@ impl WorkspaceIntelligence {
         config: WorkspaceIntelligenceConfig,
     ) -> Result<Self, WorkspaceIntelligenceError> {
         config.validate()?;
-        let snapshot: WorkspaceSnapshot = serde_json::from_slice(
-            &fs::read(path).map_err(WorkspaceIntelligenceError::Io)?,
-        )
-        .map_err(|error| WorkspaceIntelligenceError::Serialization(error.to_string()))?;
+        let snapshot: WorkspaceSnapshot =
+            serde_json::from_slice(&fs::read(path).map_err(WorkspaceIntelligenceError::Io)?)
+                .map_err(|error| WorkspaceIntelligenceError::Serialization(error.to_string()))?;
         if snapshot.schema_version != WORKSPACE_GRAPH_SCHEMA_VERSION {
             return Err(WorkspaceIntelligenceError::UnsupportedSchema(
                 snapshot.schema_version,
@@ -315,7 +321,9 @@ impl WorkspaceIntelligence {
                 let canonical = fs::canonicalize(path).map_err(WorkspaceIntelligenceError::Io)?;
                 return relative_path(&self.root, &canonical);
             }
-            return Err(WorkspaceIntelligenceError::PathEscapesWorkspace(path.to_owned()));
+            return Err(WorkspaceIntelligenceError::PathEscapesWorkspace(
+                path.to_owned(),
+            ));
         }
         validate_relative_path(path)?;
         let joined = self.root.join(path);

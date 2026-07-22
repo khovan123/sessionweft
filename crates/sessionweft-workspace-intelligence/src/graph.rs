@@ -68,7 +68,10 @@ pub(crate) fn reverse_dependents(
         })
         .collect::<HashMap<_, _>>();
     let mut reverse = HashMap::<String, BTreeSet<String>>::new();
-    for edge in edges.iter().filter(|edge| edge.kind == DependencyKind::Imports) {
+    for edge in edges
+        .iter()
+        .filter(|edge| edge.kind == DependencyKind::Imports)
+    {
         let (Some(from), Some(to)) = (symbol_to_path.get(&edge.from), symbol_to_path.get(&edge.to))
         else {
             continue;
@@ -128,10 +131,18 @@ fn resolve_import_targets<'a>(
                 .and_then(|value| value.to_str())
                 .unwrap_or_default();
             candidate.relative_path.starts_with(&relative_candidate)
-                || candidate.relative_path.ends_with(&format!("/{normalized}.rs"))
-                || candidate.relative_path.ends_with(&format!("/{normalized}.ts"))
-                || candidate.relative_path.ends_with(&format!("/{normalized}.js"))
-                || candidate.relative_path.ends_with(&format!("/{normalized}.py"))
+                || candidate
+                    .relative_path
+                    .ends_with(&format!("/{normalized}.rs"))
+                || candidate
+                    .relative_path
+                    .ends_with(&format!("/{normalized}.ts"))
+                || candidate
+                    .relative_path
+                    .ends_with(&format!("/{normalized}.js"))
+                || candidate
+                    .relative_path
+                    .ends_with(&format!("/{normalized}.py"))
                 || segments.contains(stem)
         })
         .collect()

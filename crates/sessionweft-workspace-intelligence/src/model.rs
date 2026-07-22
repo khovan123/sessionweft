@@ -81,7 +81,9 @@ pub struct IndexedFile {
 
 impl IndexedFile {
     pub(crate) fn file_symbol(&self) -> Option<&SymbolRecord> {
-        self.symbols.iter().find(|symbol| symbol.kind == SymbolKind::File)
+        self.symbols
+            .iter()
+            .find(|symbol| symbol.kind == SymbolKind::File)
     }
 }
 
@@ -158,7 +160,11 @@ pub enum WorkspaceIntelligenceError {
     #[error("workspace file limit exceeded: {0}")]
     FileLimitExceeded(usize),
     #[error("workspace file {path} is {size} bytes, limit is {limit}")]
-    FileTooLarge { path: PathBuf, size: u64, limit: u64 },
+    FileTooLarge {
+        path: PathBuf,
+        size: u64,
+        limit: u64,
+    },
     #[error("symbol limit {limit} exceeded while indexing {path}")]
     SymbolLimitExceeded { path: String, limit: usize },
     #[error("unsupported workspace graph schema version {0}")]

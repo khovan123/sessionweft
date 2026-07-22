@@ -28,7 +28,9 @@ impl SourceLanguage {
     fn grammar(self, path: &Path) -> Language {
         match self {
             Self::Rust => tree_sitter_rust::LANGUAGE.into(),
-            Self::TypeScript if path.extension().and_then(|value| value.to_str()) == Some("tsx") => {
+            Self::TypeScript
+                if path.extension().and_then(|value| value.to_str()) == Some("tsx") =>
+            {
                 tree_sitter_typescript::LANGUAGE_TSX.into()
             }
             Self::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
@@ -83,7 +85,9 @@ pub(crate) fn scan_supported_files(
                 queue.push_back(canonical);
             } else if metadata.is_file() && SourceLanguage::from_path(&path).is_some() {
                 if files.len() >= config.max_files {
-                    return Err(WorkspaceIntelligenceError::FileLimitExceeded(config.max_files));
+                    return Err(WorkspaceIntelligenceError::FileLimitExceeded(
+                        config.max_files,
+                    ));
                 }
                 files.push(fs::canonicalize(path).map_err(WorkspaceIntelligenceError::Io)?);
             }
@@ -123,7 +127,12 @@ pub(crate) fn index_file(
     let tree = parser
         .parse(&content, None)
         .ok_or_else(|| WorkspaceIntelligenceError::Parser("parser returned no tree".into()))?;
-    let file_id = stable_symbol_id(workspace_id, &relative_path, SymbolKind::File, &relative_path);
+    let file_id = stable_symbol_id(
+        workspace_id,
+        &relative_path,
+        SymbolKind::File,
+        &relative_path,
+    );
     let mut symbols = vec![SymbolRecord {
         id: file_id.clone(),
         workspace_id: workspace_id.to_owned(),
@@ -224,7 +233,14 @@ fn walk(
             qualified_name: qualified_name.clone(),
             range: SourceRange::from_node(node),
             parent: parent.clone(),
-            signature: raw.lines().next().unwrap_or(raw).trim().chars().take(512).collect(),
+            signature: raw
+                .lines()
+                .next()
+                .unwrap_or(raw)
+                .trim()
+                .chars()
+                .take(512)
+                .collect(),
         });
         if kind != SymbolKind::Import {
             child_parent = Some(id);
@@ -264,7 +280,9 @@ fn classify(language: SourceLanguage, node: Node<'_>, inside_type: bool) -> Opti
             _ => None,
         },
         SourceLanguage::TypeScript | SourceLanguage::JavaScript => match node.kind() {
-            "class_declaration" | "interface_declaration" | "type_alias_declaration"
+            "class_declaration"
+            | "interface_declaration"
+            | "type_alias_declaration"
             | "enum_declaration" => Some(SymbolKind::Type),
             "function_declaration" | "generator_function_declaration" => Some(SymbolKind::Function),
             "method_definition" => Some(SymbolKind::Method),
@@ -272,7 +290,10 @@ fn classify(language: SourceLanguage, node: Node<'_>, inside_type: bool) -> Opti
             "variable_declarator"
                 if node.child_by_field_name("value").is_some_and(|value| {
                     matches!(value.kind(), "arrow_function" | "function_expression")
-                }) => Some(SymbolKind::Function),
+                }) =>
+            {
+                Some(SymbolKind::Function)
+            }
             _ => None,
         },
         SourceLanguage::Python => match node.kind() {
@@ -329,7 +350,9 @@ pub(crate) fn relative_path(
     candidate: &Path,
 ) -> Result<String, WorkspaceIntelligenceError> {
     if !candidate.starts_with(root) {
-        return Err(WorkspaceIntelligenceError::PathEscapesWorkspace(candidate.to_owned()));
+        return Err(WorkspaceIntelligenceError::PathEscapesWorkspace(
+            candidate.to_owned(),
+        ));
     }
     let relative = candidate
         .strip_prefix(root)
@@ -344,8 +367,13 @@ pub(crate) fn validate_relative_path(path: &Path) -> Result<(), WorkspaceIntelli
             "workspace path must be non-empty and relative".into(),
         ));
     }
-    if path.components().any(|component| !matches!(component, Component::Normal(_))) {
-        return Err(WorkspaceIntelligenceError::PathEscapesWorkspace(path.to_owned()));
+    if path
+        .components()
+        .any(|component| !matches!(component, Component::Normal(_)))
+    {
+        return Err(WorkspaceIntelligenceError::PathEscapesWorkspace(
+            path.to_owned(),
+        ));
     }
     Ok(())
 }
