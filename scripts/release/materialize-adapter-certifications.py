@@ -10,6 +10,15 @@ import json
 import pathlib
 import re
 
+GATE_ORDER = {
+    "contract": 0,
+    "compatibility": 1,
+    "security": 2,
+    "recovery": 3,
+    "observability": 4,
+    "supply_chain": 5,
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
@@ -20,8 +29,18 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def canonical_gates(values: list[str]) -> list[str]:
+    unknown = sorted(set(values) - set(GATE_ORDER))
+    if unknown:
+        raise SystemExit(f"unknown certification gates: {unknown}")
+    return sorted(values, key=GATE_ORDER.__getitem__)
+
+
 def canonical_manifest(manifest: dict[str, object]) -> dict[str, object]:
     """Match AdapterManifest's serde field order and BTreeSet ordering."""
+    required = manifest["required_gates"]
+    if not isinstance(required, list):
+        raise SystemExit("required_gates must be an array")
     return {
         "schema_version": manifest["schema_version"],
         "adapter_id": manifest["adapter_id"],
@@ -31,7 +50,7 @@ def canonical_manifest(manifest: dict[str, object]) -> dict[str, object]:
         "supported_platforms": sorted(manifest["supported_platforms"]),
         "capabilities": sorted(manifest["capabilities"]),
         "source_paths": manifest["source_paths"],
-        "required_gates": sorted(manifest["required_gates"]),
+        "required_gates": canonical_gates(required),
     }
 
 
@@ -62,6 +81,7 @@ def main() -> None:
         required = manifest.get("required_gates")
         if not isinstance(required, list) or not required:
             raise SystemExit(f"{path}: required_gates must be a non-empty array")
+        ordered_gates = canonical_gates(required)
         certification = {
             "schema_version": 1,
             "adapter_id": manifest["adapter_id"],
@@ -80,7 +100,7 @@ def main() -> None:
                         f"release/adapters/manifests/{path.name}",
                     ],
                 }
-                for gate in sorted(required)
+                for gate in ordered_gates
             ],
         }
         destination = args.output / f"{manifest['adapter_id']}-{manifest['version']}.json"
