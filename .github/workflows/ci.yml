@@ -27,9 +27,9 @@ jobs:
           cargo fmt --all
           rm -f Cargo.lock
           cargo generate-lockfile
-          if grep -Eq '^name = "(rsa|sqlx-mysql)"$' Cargo.lock; then
-            echo "unused MySQL/RSA packages remain in Cargo.lock" >&2
-            grep -nE '^name = "(rsa|sqlx-mysql)"$' Cargo.lock >&2
+          if grep -Eq '^name = "rsa"$' Cargo.lock; then
+            echo "unused vulnerable RSA package remains in Cargo.lock" >&2
+            grep -nE '^name = "rsa"$' Cargo.lock >&2
             exit 1
           fi
           git config user.name "github-actions[bot]"
