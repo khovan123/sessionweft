@@ -67,6 +67,30 @@ jobs:
           print(f"verified fail-closed SQLx MySQL compatibility package: {manifest}")
           PY
 
+      - name: Reject wildcard registry dependencies
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+
+          metadata = json.loads(subprocess.check_output([
+              "cargo", "metadata", "--locked", "--format-version", "1"
+          ]))
+          workspace_members = set(metadata["workspace_members"])
+          violations = []
+          for package in metadata["packages"]:
+              if package["id"] not in workspace_members:
+                  continue
+              for dependency in package.get("dependencies", []):
+                  if dependency.get("req") == "*" and dependency.get("path") is None:
+                      violations.append(
+                          f"{package['name']}: {dependency['name']} uses wildcard registry requirement"
+                      )
+          if violations:
+              raise SystemExit("\n".join(violations))
+          print("verified: workspace wildcard requirements are limited to local path dependencies")
+          PY
+
       - name: RustSec advisory audit
         run: |
           set +e
