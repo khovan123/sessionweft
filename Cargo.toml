@@ -20,6 +20,7 @@ members = [
   "crates/sessionweft-scheduler-sqlite",
   "crates/sessionweft-task-runner",
   "crates/sessionweft-tenancy",
+  "crates/sessionweft-tenant-runtime",
   "crates/sessionweft-storage",
   "crates/sessionweft-provider",
   "crates/sessionweft-runtime",
@@ -30,6 +31,7 @@ members = [
   "crates/sessionweft-client-protocol-sqlite",
   "crates/sessionweft-release-gate",
   "apps/sessionweftd",
+  "apps/sessionweft-saasd",
   "apps/sessionweft-cli",
   "apps/sessionweft-tui",
 ]
