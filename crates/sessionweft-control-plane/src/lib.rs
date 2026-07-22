@@ -575,13 +575,7 @@ mod tests {
             .await
             .expect("start workflow node");
         let workflow = control_plane
-            .complete_workflow_node(
-                session.id,
-                workflow.id,
-                workflow.version,
-                "task",
-                &context,
-            )
+            .complete_workflow_node(session.id, workflow.id, workflow.version, "task", &context)
             .await
             .expect("complete workflow node");
         assert_eq!(workflow.status, WorkflowStatus::Succeeded);
@@ -612,7 +606,14 @@ mod tests {
             )
             .await
             .expect("heartbeat lock");
-        assert_eq!(control_plane.list_locks(session.id, "workspace").await.expect("list locks").len(), 1);
+        assert_eq!(
+            control_plane
+                .list_locks(session.id, "workspace")
+                .await
+                .expect("list locks")
+                .len(),
+            1
+        );
         control_plane
             .release_lock(
                 session.id,
@@ -623,11 +624,13 @@ mod tests {
             )
             .await
             .expect("release lock");
-        assert!(control_plane
-            .list_locks(session.id, "workspace")
-            .await
-            .expect("list released locks")
-            .is_empty());
+        assert!(
+            control_plane
+                .list_locks(session.id, "workspace")
+                .await
+                .expect("list released locks")
+                .is_empty()
+        );
 
         let memory = MemoryRecord::new(
             session.id,
