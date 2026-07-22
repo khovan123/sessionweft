@@ -1,0 +1,315 @@
+name: refactor-merge-gate-inputs
+
+on:
+  push:
+    branches:
+      - implementation/git-merge-queue
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Group merge gate decisions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          domain = Path('crates/sessionweft-git/src/merge_queue.rs')
+          text = domain.read_text()
+          marker = '''impl MergeQueueRequest {
+    pub fn validate(&self) -> Result<(), GitWorkspaceError> {
+'''
+          structs = '''#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergeReviewDecision {
+    pub queue_id: Uuid,
+    pub reviewer_id: String,
+    pub approved: bool,
+    pub note: Option<String>,
+    pub decided_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MergeTestResult {
+    pub queue_id: Uuid,
+    pub suite: String,
+    pub passed: bool,
+    pub summary: Option<String>,
+    pub completed_at: DateTime<Utc>,
+}
+
+'''
+          if 'pub struct MergeReviewDecision' not in text:
+              index = text.index(marker)
+              text = text[:index] + structs + text[index:]
+          old_review = '''    async fn record_review(
+        &self,
+        queue_id: Uuid,
+        reviewer_id: &str,
+        approved: bool,
+        note: Option<&str>,
+        now: DateTime<Utc>,
+        correlation_id: Uuid,
+        actor_id: Option<&str>,
+    ) -> Result<MergeQueueEntry, GitRepositoryError>;
+'''
+          new_review = '''    async fn record_review(
+        &self,
+        decision: &MergeReviewDecision,
+        correlation_id: Uuid,
+        actor_id: Option<&str>,
+    ) -> Result<MergeQueueEntry, GitRepositoryError>;
+'''
+          if old_review in text:
+              text = text.replace(old_review, new_review, 1)
+          old_tests = '''    async fn record_tests(
+        &self,
+        queue_id: Uuid,
+        suite: &str,
+        passed: bool,
+        summary: Option<&str>,
+        now: DateTime<Utc>,
+        correlation_id: Uuid,
+        actor_id: Option<&str>,
+    ) -> Result<MergeQueueEntry, GitRepositoryError>;
+'''
+          new_tests = '''    async fn record_tests(
+        &self,
+        result: &MergeTestResult,
+        correlation_id: Uuid,
+        actor_id: Option<&str>,
+    ) -> Result<MergeQueueEntry, GitRepositoryError>;
+'''
+          if old_tests in text:
+              text = text.replace(old_tests, new_tests, 1)
+          old_approve_call = '''            .record_review(
+                queue_id,
+                reviewer_id,
+                true,
+                note,
+                Utc::now(),
+                correlation_id,
+                actor_id,
+            )
+'''
+          new_approve_call = '''            .record_review(
+                &MergeReviewDecision {
+                    queue_id,
+                    reviewer_id: reviewer_id.to_owned(),
+                    approved: true,
+                    note: note.map(str::to_owned),
+                    decided_at: Utc::now(),
+                },
+                correlation_id,
+                actor_id,
+            )
+'''
+          if old_approve_call in text:
+              text = text.replace(old_approve_call, new_approve_call, 1)
+          old_test_call = '''            .record_tests(
+                queue_id,
+                suite,
+                true,
+                summary,
+                Utc::now(),
+                correlation_id,
+                actor_id,
+            )
+'''
+          new_test_call = '''            .record_tests(
+                &MergeTestResult {
+                    queue_id,
+                    suite: suite.to_owned(),
+                    passed: true,
+                    summary: summary.map(str::to_owned),
+                    completed_at: Utc::now(),
+                },
+                correlation_id,
+                actor_id,
+            )
+'''
+          if old_test_call in text:
+              text = text.replace(old_test_call, new_test_call, 1)
+          domain.write_text(text)
+
+          root = Path('crates/sessionweft-git/src/root.rs')
+          text = root.read_text()
+          old = '''    GIT_MERGE_QUEUE_SCHEMA_VERSION, GitMergeQueueRepository, GitMergeQueueService, MergeConflict,
+    MergeGateStatus, MergeQueueEntry, MergeQueueRequest, MergeQueueStatus, ReviewGate, TestGate,
+'''
+          new = '''    GIT_MERGE_QUEUE_SCHEMA_VERSION, GitMergeQueueRepository, GitMergeQueueService, MergeConflict,
+    MergeGateStatus, MergeQueueEntry, MergeQueueRequest, MergeQueueStatus, MergeReviewDecision,
+    MergeTestResult, ReviewGate, TestGate,
+'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          root.write_text(text)
+
+          sqlite = Path('crates/sessionweft-git-sqlite/src/merge_queue.rs')
+          text = sqlite.read_text()
+          old_import = '''    GitMergeQueueRepository, GitRepositoryError, GitWorktreeRecord, GitWorktreeStatus,
+    MergeQueueEntry, MergeQueueRequest, MergeQueueStatus,
+'''
+          new_import = '''    GitMergeQueueRepository, GitRepositoryError, GitWorktreeRecord, GitWorktreeStatus,
+    MergeQueueEntry, MergeQueueRequest, MergeQueueStatus, MergeReviewDecision, MergeTestResult,
+'''
+          if old_import in text:
+              text = text.replace(old_import, new_import, 1)
+          old_impl_review = '''    async fn record_review(
+        &self,
+        queue_id: Uuid,
+        reviewer_id: &str,
+        approved: bool,
+        note: Option<&str>,
+        now: DateTime<Utc>,
+        correlation_id: Uuid,
+        actor_id: Option<&str>,
+    ) -> Result<MergeQueueEntry, GitRepositoryError> {
+        self.mutate_merge(
+            queue_id,
+            "git.merge_review_recorded",
+            correlation_id,
+            actor_id,
+            |entry| entry.record_review(reviewer_id, approved, note.map(str::to_owned), now),
+        )
+        .await
+    }
+'''
+          new_impl_review = '''    async fn record_review(
+        &self,
+        decision: &MergeReviewDecision,
+        correlation_id: Uuid,
+        actor_id: Option<&str>,
+    ) -> Result<MergeQueueEntry, GitRepositoryError> {
+        self.mutate_merge(
+            decision.queue_id,
+            "git.merge_review_recorded",
+            correlation_id,
+            actor_id,
+            |entry| {
+                entry.record_review(
+                    &decision.reviewer_id,
+                    decision.approved,
+                    decision.note.clone(),
+                    decision.decided_at,
+                )
+            },
+        )
+        .await
+    }
+'''
+          if old_impl_review in text:
+              text = text.replace(old_impl_review, new_impl_review, 1)
+          old_impl_tests = '''    async fn record_tests(
+        &self,
+        queue_id: Uuid,
+        suite: &str,
+        passed: bool,
+        summary: Option<&str>,
+        now: DateTime<Utc>,
+        correlation_id: Uuid,
+        actor_id: Option<&str>,
+    ) -> Result<MergeQueueEntry, GitRepositoryError> {
+        self.mutate_merge(
+            queue_id,
+            "git.merge_tests_recorded",
+            correlation_id,
+            actor_id,
+            |entry| entry.record_tests(suite, passed, summary.map(str::to_owned), now),
+        )
+        .await
+    }
+'''
+          new_impl_tests = '''    async fn record_tests(
+        &self,
+        result: &MergeTestResult,
+        correlation_id: Uuid,
+        actor_id: Option<&str>,
+    ) -> Result<MergeQueueEntry, GitRepositoryError> {
+        self.mutate_merge(
+            result.queue_id,
+            "git.merge_tests_recorded",
+            correlation_id,
+            actor_id,
+            |entry| {
+                entry.record_tests(
+                    &result.suite,
+                    result.passed,
+                    result.summary.clone(),
+                    result.completed_at,
+                )
+            },
+        )
+        .await
+    }
+'''
+          if old_impl_tests in text:
+              text = text.replace(old_impl_tests, new_impl_tests, 1)
+          old_test_review = '''            .record_review(
+                queue_id,
+                "reviewer",
+                true,
+                None,
+                Utc::now(),
+                Uuid::new_v4(),
+                Some("test"),
+            )
+'''
+          new_test_review = '''            .record_review(
+                &MergeReviewDecision {
+                    queue_id,
+                    reviewer_id: "reviewer".into(),
+                    approved: true,
+                    note: None,
+                    decided_at: Utc::now(),
+                },
+                Uuid::new_v4(),
+                Some("test"),
+            )
+'''
+          if old_test_review in text:
+              text = text.replace(old_test_review, new_test_review, 1)
+          old_test_tests = '''            .record_tests(
+                queue_id,
+                "workspace",
+                true,
+                None,
+                Utc::now(),
+                Uuid::new_v4(),
+                Some("test"),
+            )
+'''
+          new_test_tests = '''            .record_tests(
+                &MergeTestResult {
+                    queue_id,
+                    suite: "workspace".into(),
+                    passed: true,
+                    summary: None,
+                    completed_at: Utc::now(),
+                },
+                Uuid::new_v4(),
+                Some("test"),
+            )
+'''
+          if old_test_tests in text:
+              text = text.replace(old_test_tests, new_test_tests, 1)
+          sqlite.write_text(text)
+          PY
+          cargo fmt --all
+      - name: Commit gate input refactor
+        run: |
+          if [ -n "$(git status --porcelain -- '*.rs')" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- '*.rs'
+            git commit -m "refactor: group merge gate decisions"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
