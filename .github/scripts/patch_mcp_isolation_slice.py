@@ -11,7 +11,8 @@ approval.write_text(text)
 
 sqlite = Path("crates/sessionweft-mcp-sqlite/src/lib.rs")
 text = sqlite.read_text()
-text = text.replace("use chrono::{DateTime, Utc};", "use chrono::Utc;", 1)
+text = text.replace("use chrono::{DateTime, Utc};\n", "", 1)
+text = text.replace("use chrono::Utc;\n", "", 1)
 text = text.replace(
     "use sqlx::{Row, Sqlite, SqlitePool, Transaction, sqlite::SqliteConnectOptions};",
     "use sqlx::{\n    Row, Sqlite, SqlitePool, Transaction,\n    sqlite::{SqliteConnectOptions, SqlitePoolOptions},\n};",
@@ -38,6 +39,11 @@ if old_connect in text:
     text = text.replace(old_connect, new_connect, 1)
 elif new_connect not in text:
     raise SystemExit("SQLite connect block not found")
+text = text.replace(
+    "    use chrono::Duration;",
+    "    use chrono::{Duration, Utc};",
+    1,
+)
 sqlite.write_text(text)
 
 malicious = Path("crates/sessionweft-mcp/tests/malicious.rs")
