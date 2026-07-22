@@ -1,0 +1,150 @@
+name: fix-execution-identity
+
+on:
+  push:
+    branches:
+      - implementation/provider-tool-execution-ledger
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Refactor execution identity
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          domain = Path('crates/sessionweft-scheduler/src/task_execution.rs')
+          text = domain.read_text()
+          marker = '\nimpl TaskExecutionRecord {\n'
+          identity = '''
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskExecutionIdentity {
+    pub claim_id: Uuid,
+    pub session_id: SessionId,
+    pub workflow_id: Uuid,
+    pub node_id: String,
+    pub agent_id: Uuid,
+    pub idempotency_key: String,
+}
+
+'''
+          if 'pub struct TaskExecutionIdentity' not in text:
+              if marker not in text:
+                  raise SystemExit('TaskExecutionRecord impl marker not found')
+              text = text.replace(marker, '\n' + identity + 'impl TaskExecutionRecord {\n', 1)
+          old_signature = '''    pub fn prepared(
+        claim_id: Uuid,
+        session_id: SessionId,
+        workflow_id: Uuid,
+        node_id: String,
+        agent_id: Uuid,
+        idempotency_key: String,
+        action: TaskAction,
+        now: DateTime<Utc>,
+    ) -> Self {
+'''
+          new_signature = '''    pub fn prepared(
+        identity: TaskExecutionIdentity,
+        action: TaskAction,
+        now: DateTime<Utc>,
+    ) -> Self {
+'''
+          if old_signature in text:
+              text = text.replace(old_signature, new_signature, 1)
+          elif new_signature not in text:
+              raise SystemExit('prepared constructor signature not found')
+          old_fields = '''            claim_id,
+            session_id,
+            workflow_id,
+            node_id,
+            agent_id,
+            idempotency_key,
+            action,
+'''
+          new_fields = '''            claim_id: identity.claim_id,
+            session_id: identity.session_id,
+            workflow_id: identity.workflow_id,
+            node_id: identity.node_id,
+            agent_id: identity.agent_id,
+            idempotency_key: identity.idempotency_key,
+            action,
+'''
+          if old_fields in text:
+              text = text.replace(old_fields, new_fields, 1)
+          elif new_fields not in text:
+              raise SystemExit('prepared constructor fields not found')
+          domain.write_text(text)
+
+          root = Path('crates/sessionweft-scheduler/src/root.rs')
+          text = root.read_text()
+          old = 'TaskExecutionError, TaskExecutionRecord, TaskExecutionRepository, TaskExecutionService,\n'
+          new = 'TaskExecutionError, TaskExecutionIdentity, TaskExecutionRecord, TaskExecutionRepository,\n    TaskExecutionService,\n'
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'TaskExecutionIdentity' not in text:
+              raise SystemExit('task execution root export not found')
+          root.write_text(text)
+
+          sqlite = Path('crates/sessionweft-scheduler-sqlite/src/task_execution.rs')
+          text = sqlite.read_text()
+          old_import = '''    ClaimLockFenceSnapshot, RepositoryError, TaskAction, TaskClaimStatus, TaskExecutionRecord,
+    TaskExecutionRepository, TaskExecutionSpec, TaskExecutionStatus, ToolExecutionApproval,
+'''
+          new_import = '''    ClaimLockFenceSnapshot, RepositoryError, TaskAction, TaskClaimStatus, TaskExecutionIdentity,
+    TaskExecutionRecord, TaskExecutionRepository, TaskExecutionSpec, TaskExecutionStatus,
+    ToolExecutionApproval,
+'''
+          if old_import in text:
+              text = text.replace(old_import, new_import, 1)
+          elif 'TaskExecutionIdentity' not in text:
+              raise SystemExit('sqlite task execution import not found')
+          old_call = '''        let execution = TaskExecutionRecord::prepared(
+            claim.id,
+            claim.session_id,
+            claim.workflow_id,
+            claim.node_id,
+            claim.agent_id,
+            claim.idempotency_key,
+            spec.action,
+            now,
+        );
+'''
+          new_call = '''        let execution = TaskExecutionRecord::prepared(
+            TaskExecutionIdentity {
+                claim_id: claim.id,
+                session_id: claim.session_id,
+                workflow_id: claim.workflow_id,
+                node_id: claim.node_id,
+                agent_id: claim.agent_id,
+                idempotency_key: claim.idempotency_key,
+            },
+            spec.action,
+            now,
+        );
+'''
+          if old_call in text:
+              text = text.replace(old_call, new_call, 1)
+          elif new_call not in text:
+              raise SystemExit('prepared call not found')
+          sqlite.write_text(text)
+          PY
+          cargo fmt --all
+      - name: Commit execution identity refactor
+        run: |
+          if [ -n "$(git status --porcelain -- '*.rs')" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- '*.rs'
+            git commit -m "refactor: group task execution identity"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
