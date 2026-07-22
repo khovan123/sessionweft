@@ -6,29 +6,25 @@ SessionWeft is a session-first, provider-agnostic Runtime for coordinating AI ag
 
 ## Status
 
-The project is in **Phase 2: first Runtime vertical slice**. Phase -1, the Phase 0 decision baseline, Architecture baseline, ADRs, RFC-0001 and Production Specification v0 are complete for this constrained implementation.
+SessionWeft `0.1.0` is approved for General Availability within the declared scope:
 
-The current code implements:
+- SQLite local single-user Runtime mode;
+- authenticated single-tenant service mode using PostgreSQL and NATS JetStream;
+- durable Session, Workflow, Agent, Memory, Lock, Git, Provider, Tool and event state;
+- CLI, Ratatui TUI and VS Code clients as stateless Runtime adapters;
+- Linux production MCP/plugin sandbox using bubblewrap.
 
-- versioned Session aggregate;
-- optimistic concurrency;
-- SQLite WAL persistence;
-- transactional outbox;
-- bounded local event delivery;
-- provider registry;
-- Echo and Ollama-compatible provider adapters;
-- Runtime service;
-- authenticated bootstrap HTTP API;
-- scriptable CLI;
-- structured logging and recovery-oriented tests.
+Release: [`v0.1.0`](../../releases/tag/v0.1.0)
 
-Workflow, locks, Git collaboration, workspace indexing, memory, MCP, TUI and IDE remain separate implementation streams.
+Phase 3 work for multi-tenant SaaS, billing, portable plugin isolation and adapter certification is tracked separately and must pass a new exact-commit release gate before it can expand the GA scope.
 
 ## Requirements
 
 - Rust 1.88 or newer
-- A local filesystem for the SQLite database
+- A local filesystem for SQLite local mode
+- PostgreSQL 17+ and NATS JetStream for service mode
 - Ollama only when using the `ollama` provider
+- Bubblewrap for native production MCP/plugin processes on Linux
 
 ## Run locally
 
@@ -69,28 +65,30 @@ Every mutation requires the expected Session version. A stale version returns HT
 | Variable | Default | Purpose |
 |---|---|---|
 | `SESSIONWEFT_BIND` | `127.0.0.1:7447` | Runtime listen address |
-| `SESSIONWEFT_DATABASE_URL` | `sqlite://sessionweft.db` | SQLite connection URL |
+| `SESSIONWEFT_DATABASE_URL` | `sqlite://sessionweft.db` | SQLite or PostgreSQL connection URL |
 | `SESSIONWEFT_API_TOKEN` | unset | Bearer token; required for non-loopback bind |
 | `SESSIONWEFT_OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama-compatible endpoint |
 | `SESSIONWEFT_ENDPOINT` | `http://127.0.0.1:7447` | CLI Runtime endpoint |
 | `RUST_LOG` | `info` | Structured log filter |
 
-Example authenticated team-style bind:
+Example authenticated service bind:
 
 ```bash
 export SESSIONWEFT_BIND=0.0.0.0:7447
 export SESSIONWEFT_API_TOKEN='replace-with-a-secret'
+export SESSIONWEFT_DATABASE_URL='postgres://sessionweft:secret@db/sessionweft'
 cargo run -p sessionweftd
 ```
 
 Then provide the same token to the CLI through `SESSIONWEFT_API_TOKEN` or `--token`.
 
-## Test
+## Verify
 
 ```bash
+cargo metadata --locked --format-version 1 --no-deps >/dev/null
 cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test --workspace --locked
 ```
 
 ## Architecture rules
@@ -100,18 +98,15 @@ cargo test --workspace
 - Durable delivery is treated as at least once.
 - Provider, CLI and API adapters never access the database directly.
 - Tool and plugin execution remain default-deny.
-- Search, memory and vector indexes must be rebuildable projections.
+- Search, memory and vector indexes are rebuildable projections.
+- Production release evidence is bound to the exact tested commit.
 
 ## Documentation
 
 - [`PROJECT.md`](PROJECT.md): project source of truth and complete roadmap
-- [`docs/00-product/current-status.md`](docs/00-product/current-status.md): current gate and active scope
-- [`docs/01-research/phase-0-synthesis.md`](docs/01-research/phase-0-synthesis.md): technology decisions
+- [`docs/00-product/current-status.md`](docs/00-product/current-status.md): current release scope and completed gates
+- [`docs/09-release/general-availability-0.1.0.md`](docs/09-release/general-availability-0.1.0.md): GA decision
 - [`docs/02-architecture/baseline-v1.md`](docs/02-architecture/baseline-v1.md): architecture baseline
 - [`docs/04-adr`](docs/04-adr): accepted decisions
-- [`docs/03-rfc/0001-runtime-vertical-slice.md`](docs/03-rfc/0001-runtime-vertical-slice.md): implementation contract
-- [`docs/05-specs/production-spec-v0.md`](docs/05-specs/production-spec-v0.md): production constraints
-
-## Contribution rule
-
-Do not introduce a material dependency or architectural commitment without a linked research result and, where applicable, an approved ADR or RFC.
+- [`docs/03-rfc`](docs/03-rfc): implementation contracts
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): automatically generated contributor avatars
