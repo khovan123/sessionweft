@@ -5,7 +5,8 @@ use sessionweft_billing::{
     BillingInterval, BillingPlan, BillingRepository, Money, PlanId, Subscription,
 };
 use sessionweft_saas_postgres::{
-    PostgresBillingRepository, PostgresTenantRepository, SaasPostgresDatabase,
+    PostgresBillingRepository, PostgresTenantAuthRepository, PostgresTenantRepository,
+    SaasPostgresDatabase,
 };
 use sessionweft_tenancy::{
     PrincipalId, QuotaDimension, ResourceKind, TenantQuota, TenantRepository, TenantService,
@@ -67,7 +68,7 @@ async fn rls_resource_ownership_and_quota_reservations_are_tenant_isolated() {
     assert_eq!(first, replay);
     assert!(
         service
-            .reserve(&context, QuotaDimension::ProviderTokens, 4, "usage-2",)
+            .reserve(&context, QuotaDimension::ProviderTokens, 4, "usage-2")
             .await
             .is_err()
     );
@@ -163,5 +164,57 @@ async fn billing_repository_cannot_cross_tenant_boundary() {
             .expect("right lookup")
             .is_none(),
         "RLS must hide the left subscription from the right tenant"
+    );
+}
+
+#[tokio::test]
+#[ignore = "requires PostgreSQL service"]
+async fn tenant_token_is_returned_once_resolved_by_hash_and_revoked() {
+    let database = SaasPostgresDatabase::connect(&postgres_url())
+        .await
+        .expect("database");
+    let tenant_repository = Arc::new(PostgresTenantRepository::new(database.clone()));
+    let service = TenantService::new(Arc::clone(&tenant_repository));
+    let auth = PostgresTenantAuthRepository::new(database.clone())
+        .await
+        .expect("auth repository");
+    let suffix = Uuid::new_v4().simple().to_string();
+    let principal = PrincipalId::parse(format!("token-owner-{suffix}")).expect("principal");
+    let (tenant, _) = service
+        .bootstrap(
+            format!("token-{suffix}"),
+            "Token tenant",
+            principal.clone(),
+        )
+        .await
+        .expect("tenant");
+    let issued = auth
+        .issue(tenant.id, principal.clone(), "integration", None)
+        .await
+        .expect("issue token");
+    assert!(issued.raw_token.starts_with("swt_"));
+
+    let raw_is_persisted = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS (SELECT 1 FROM sessionweft_tenant_api_tokens WHERE encode(token_hash, 'hex') = encode($1::bytea, 'hex'))",
+    )
+    .bind(issued.raw_token.as_bytes())
+    .fetch_one(database.pool())
+    .await
+    .expect("raw token persistence check");
+    assert!(!raw_is_persisted, "raw tenant token must never be stored");
+
+    let resolved = auth
+        .resolve(&issued.raw_token)
+        .await
+        .expect("resolve token")
+        .expect("resolved token");
+    assert_eq!(resolved.tenant_id, tenant.id);
+    assert_eq!(resolved.principal_id, principal);
+    assert!(auth.revoke(tenant.id, issued.id).await.expect("revoke"));
+    assert!(
+        auth.resolve(&issued.raw_token)
+            .await
+            .expect("resolve revoked token")
+            .is_none()
     );
 }
