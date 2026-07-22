@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "release": "0.1.0",
+  "tag": "v0.1.0",
+  "status": "approved",
+  "ga_decision": "docs/09-release/general-availability-0.1.0.md",
+  "policy": "release/ga-policy-0.1.0.json",
+  "evidence_template": "release/evidence/ga-0.1.0.json",
+  "publish_from": "main",
+  "immutable": true
+}
