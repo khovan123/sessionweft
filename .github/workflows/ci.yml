@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   rust:
@@ -14,31 +14,10 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
       - uses: dtolnay/rust-toolchain@1.88.0
         with:
           components: rustfmt,clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Finalize hardening dependency graph once
-        if: github.event_name == 'pull_request' && github.head_ref == 'release/production-hardening-v2' && github.actor != 'github-actions[bot]'
-        run: |
-          cargo fmt --all
-          rm -f Cargo.lock
-          cargo generate-lockfile
-          if grep -Eq '^name = "rsa"$' Cargo.lock; then
-            echo "unused vulnerable RSA package remains in Cargo.lock" >&2
-            grep -nE '^name = "rsa"$' Cargo.lock >&2
-            exit 1
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock Cargo.toml crates/sqlx-mysql-disabled \
-            crates/sessionweft-service-postgres/src/database.rs
-          if ! git diff --cached --quiet; then
-            git commit -m "security: remove unused SQLx MySQL RSA dependency"
-            git push origin HEAD:${{ github.head_ref }}
-          fi
       - name: Verify dependency lockfile
         run: cargo metadata --locked --format-version 1 --no-deps > /dev/null
       - name: Format
