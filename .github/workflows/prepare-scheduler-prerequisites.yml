@@ -1,0 +1,33 @@
+name: prepare-scheduler-prerequisites
+
+on:
+  push:
+    branches:
+      - implementation/scheduler-prerequisites
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - run: |
+          python scripts/internal/prepare_scheduler_prerequisites.py
+          rm scripts/internal/prepare_scheduler_prerequisites.py
+          cargo fmt --all
+      - name: Commit prerequisites
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- crates/sessionweft-scheduler crates/sessionweft-scheduler-sqlite scripts/internal
+            git commit -m "feat: enforce scheduler approval and lock prerequisites"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
