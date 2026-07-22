@@ -1,0 +1,33 @@
+name: prepare-postgres-jetstream
+
+on:
+  push:
+    branches:
+      - implementation/postgres-jetstream
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Format and lock dependencies
+        run: |
+          cargo fmt --all
+          cargo generate-lockfile
+      - name: Commit generated files
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock Cargo.toml crates/sessionweft-service-postgres crates/sessionweft-jetstream
+            git commit -m "build: prepare PostgreSQL JetStream service mode"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
