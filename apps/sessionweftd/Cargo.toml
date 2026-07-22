@@ -16,6 +16,9 @@ sessionweft-control-plane = { path = "../../crates/sessionweft-control-plane" }
 sessionweft-core = { path = "../../crates/sessionweft-core" }
 sessionweft-execution = { path = "../../crates/sessionweft-execution" }
 sessionweft-execution-sqlite = { path = "../../crates/sessionweft-execution-sqlite" }
+sessionweft-git = { path = "../../crates/sessionweft-git" }
+sessionweft-git-local = { path = "../../crates/sessionweft-git-local" }
+sessionweft-git-sqlite = { path = "../../crates/sessionweft-git-sqlite" }
 sessionweft-knowledge = { path = "../../crates/sessionweft-knowledge" }
 sessionweft-knowledge-sqlite = { path = "../../crates/sessionweft-knowledge-sqlite" }
 sessionweft-orchestration = { path = "../../crates/sessionweft-orchestration" }
