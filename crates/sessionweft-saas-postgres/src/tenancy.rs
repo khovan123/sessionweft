@@ -1,7 +1,6 @@
 use std::{collections::BTreeSet, str::FromStr};
 
 use async_trait::async_trait;
-use chrono::Utc;
 use sessionweft_tenancy::{
     Membership, PrincipalId, QuotaDimension, QuotaReservation, ResourceKind, TenancyError, Tenant,
     TenantId, TenantQuota, TenantRepository, TenantRole, TenantStatus,
@@ -560,7 +559,7 @@ fn as_u64(value: i64) -> Result<u64, TenancyError> {
         .map_err(|_| TenancyError::Repository(format!("invalid negative numeric value {value}")))
 }
 
-fn repository_error(error: sqlx::Error) -> TenancyError {
+fn repository_error(error: impl std::fmt::Display) -> TenancyError {
     TenancyError::Repository(error.to_string())
 }
 
