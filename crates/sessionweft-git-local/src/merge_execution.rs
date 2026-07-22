@@ -58,18 +58,29 @@ impl GitCliMergeExecutor {
             .map_err(|error| GitOperationError::InvalidOutput(error.to_string()))
     }
 
-    async fn source_worktree_path(
-        &self,
-        entry: &MergeQueueEntry,
-    ) -> Result<String, GitOperationError> {
+    fn durable_worktree_path(entry: &MergeQueueEntry) -> Result<String, GitOperationError> {
         let worktree_path = entry.worktree_path.trim();
         if worktree_path.is_empty() {
             return Err(GitOperationError::InvalidOutput(
                 "merge queue entry is missing its durable worktree path".into(),
             ));
         }
+        Ok(worktree_path.to_owned())
+    }
+
+    async fn source_worktree_path(
+        &self,
+        entry: &MergeQueueEntry,
+    ) -> Result<String, GitOperationError> {
+        let worktree_path = Self::durable_worktree_path(entry)?;
         let actual_branch = self
-            .checked(["-C", worktree_path, "symbolic-ref", "--quiet", "HEAD"])
+            .checked([
+                "-C",
+                worktree_path.as_str(),
+                "symbolic-ref",
+                "--quiet",
+                "HEAD",
+            ])
             .await?;
         let expected_branch = format!("refs/heads/{}", entry.source_branch);
         if actual_branch != expected_branch {
@@ -77,7 +88,7 @@ impl GitCliMergeExecutor {
                 "worktree path {worktree_path} is checked out at {actual_branch}, expected {expected_branch}"
             )));
         }
-        Ok(worktree_path.to_owned())
+        Ok(worktree_path)
     }
 
     async fn target_head(&self, entry: &MergeQueueEntry) -> Result<String, GitOperationError> {
@@ -131,7 +142,7 @@ impl GitCliMergeExecutor {
         &self,
         entry: &MergeQueueEntry,
     ) -> Result<bool, GitOperationError> {
-        let worktree_path = self.source_worktree_path(entry).await?;
+        let worktree_path = Self::durable_worktree_path(entry)?;
         for state in ["rebase-merge", "rebase-apply"] {
             let path = self
                 .checked([
@@ -150,7 +161,7 @@ impl GitCliMergeExecutor {
     }
 
     async fn abort_rebase(&self, entry: &MergeQueueEntry) -> Result<(), GitOperationError> {
-        let worktree_path = self.source_worktree_path(entry).await?;
+        let worktree_path = Self::durable_worktree_path(entry)?;
         let output = self
             .run(["-C", worktree_path.as_str(), "rebase", "--abort"])
             .await?;
@@ -310,7 +321,7 @@ impl GitMergeExecutor for GitCliMergeExecutor {
         &self,
         entry: &MergeQueueEntry,
     ) -> Result<MergeRecoveryObservation, GitOperationError> {
-        let worktree_path = match self.source_worktree_path(entry).await {
+        let worktree_path = match Self::durable_worktree_path(entry) {
             Ok(path) => path,
             Err(GitOperationError::InvalidOutput(_)) => {
                 return Ok(MergeRecoveryObservation::MissingWorktree);
