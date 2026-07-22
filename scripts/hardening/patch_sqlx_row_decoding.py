@@ -3,6 +3,13 @@ from pathlib import Path
 path = Path("crates/sessionweft-service-postgres/src/database.rs")
 text = path.read_text()
 
+tuple_markers = (
+    "sqlx::query_as::<_, (Uuid, serde_json::Value, i32)>",
+    "sqlx::query_as::<_, (String, String, Uuid, DateTime<Utc>)>",
+)
+if all(marker in text for marker in tuple_markers):
+    raise SystemExit(0)
+
 text = text.replace(
     "use sqlx::{PgPool, Postgres, Transaction, postgres::PgPoolOptions};",
     "use sqlx::{PgPool, Postgres, Row, Transaction, postgres::PgPoolOptions};",
