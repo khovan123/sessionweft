@@ -7,10 +7,27 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+const HTTP_BUCKETS_MICROS: [u128; 7] = [100_000, 250_000, 500_000, 1_000_000, 2_000_000, 5_000_000, u128::MAX];
+const HTTP_BUCKET_LABELS: [&str; 7] = ["0.1", "0.25", "0.5", "1", "2", "5", "+Inf"];
+
 #[derive(Debug, Clone, Copy, Default)]
 struct DurationAggregate {
     count: u64,
     sum_micros: u128,
+    buckets: [u64; HTTP_BUCKETS_MICROS.len()],
+}
+
+impl DurationAggregate {
+    fn record(&mut self, duration: Duration) {
+        self.count = self.count.saturating_add(1);
+        let micros = duration.as_micros();
+        self.sum_micros = self.sum_micros.saturating_add(micros);
+        for (index, upper_bound) in HTTP_BUCKETS_MICROS.iter().enumerate() {
+            if micros <= *upper_bound {
+                self.buckets[index] = self.buckets[index].saturating_add(1);
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -53,15 +70,12 @@ impl MetricsRegistry {
             .expect("HTTP request metrics mutex poisoned")
             .entry((method.clone(), status))
             .or_default() += 1;
-        let mut durations = self
-            .http_durations
+        self.http_durations
             .lock()
-            .expect("HTTP duration metrics mutex poisoned");
-        let aggregate = durations.entry(method).or_default();
-        aggregate.count = aggregate.count.saturating_add(1);
-        aggregate.sum_micros = aggregate
-            .sum_micros
-            .saturating_add(duration.as_micros());
+            .expect("HTTP duration metrics mutex poisoned")
+            .entry(method)
+            .or_default()
+            .record(duration);
     }
 
     pub fn record_auth_denied(&self) {
@@ -110,9 +124,14 @@ impl MetricsRegistry {
         }
         output.push_str(
             "# HELP sessionweft_http_request_duration_seconds HTTP request duration by method.\n\
-             # TYPE sessionweft_http_request_duration_seconds summary\n",
+             # TYPE sessionweft_http_request_duration_seconds histogram\n",
         );
         for (method, aggregate) in durations {
+            for (label, count) in HTTP_BUCKET_LABELS.iter().zip(aggregate.buckets) {
+                output.push_str(&format!(
+                    "sessionweft_http_request_duration_seconds_bucket{{method=\"{method}\",le=\"{label}\"}} {count}\n"
+                ));
+            }
             output.push_str(&format!(
                 "sessionweft_http_request_duration_seconds_count{{method=\"{method}\"}} {}\n",
                 aggregate.count
@@ -164,9 +183,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn renders_bounded_metrics_and_counters() {
+    fn renders_bounded_histogram_and_counters() {
         let registry = MetricsRegistry::new();
         registry.record_http("GET", 200, Duration::from_millis(25));
+        registry.record_http("GET", 200, Duration::from_millis(750));
         registry.record_http("UNBOUNDED-CUSTOM", 503, Duration::from_millis(75));
         registry.record_auth_denied();
         registry.record_successful_mutation();
@@ -174,10 +194,16 @@ mod tests {
 
         let metrics = registry.render_prometheus();
         assert!(metrics.contains(
-            "sessionweft_http_requests_total{method=\"GET\",status=\"200\"} 1"
+            "sessionweft_http_requests_total{method=\"GET\",status=\"200\"} 2"
         ));
         assert!(metrics.contains(
             "sessionweft_http_requests_total{method=\"OTHER\",status=\"503\"} 1"
+        ));
+        assert!(metrics.contains(
+            "sessionweft_http_request_duration_seconds_bucket{method=\"GET\",le=\"0.1\"} 1"
+        ));
+        assert!(metrics.contains(
+            "sessionweft_http_request_duration_seconds_bucket{method=\"GET\",le=\"1\"} 2"
         ));
         assert!(metrics.contains("sessionweft_auth_denied_total 1"));
         assert!(metrics.contains("sessionweft_successful_mutations_total 1"));
