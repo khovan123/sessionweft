@@ -46,7 +46,10 @@ impl TaskAction {
                         "provider action requires at least one message".into(),
                     ));
                 }
-                if messages.iter().any(|message| message.content.trim().is_empty()) {
+                if messages
+                    .iter()
+                    .any(|message| message.content.trim().is_empty())
+                {
                     return Err(TaskExecutionError::Validation(
                         "provider action messages cannot be empty".into(),
                     ));
@@ -395,13 +398,7 @@ where
         match runner.run(&running).await {
             Ok(output) => self
                 .repository
-                .succeed_execution(
-                    execution_id,
-                    output,
-                    Utc::now(),
-                    correlation_id,
-                    actor_id,
-                )
+                .succeed_execution(execution_id, output, Utc::now(), correlation_id, actor_id)
                 .await
                 .map_err(TaskExecutionError::Repository),
             Err(error) => self

@@ -159,10 +159,15 @@ async fn run(cancellation: CancellationToken) -> anyhow::Result<()> {
                     }
                 }
             }
-            Err(error) => warn!(operation = "execution_prepared_scan", %correlation_id, error = %error),
+            Err(error) => {
+                warn!(operation = "execution_prepared_scan", %correlation_id, error = %error)
+            }
         }
 
-        match repository.succeeded_unfinalized_executions(batch_limit).await {
+        match repository
+            .succeeded_unfinalized_executions(batch_limit)
+            .await
+        {
             Ok(executions) => {
                 for execution in executions {
                     match scheduler_service
@@ -193,7 +198,9 @@ async fn run(cancellation: CancellationToken) -> anyhow::Result<()> {
                     }
                 }
             }
-            Err(error) => warn!(operation = "execution_success_scan", %correlation_id, error = %error),
+            Err(error) => {
+                warn!(operation = "execution_success_scan", %correlation_id, error = %error)
+            }
         }
 
         match repository.failed_unfinalized_executions(batch_limit).await {
@@ -232,7 +239,9 @@ async fn run(cancellation: CancellationToken) -> anyhow::Result<()> {
                     }
                 }
             }
-            Err(error) => warn!(operation = "execution_failure_scan", %correlation_id, error = %error),
+            Err(error) => {
+                warn!(operation = "execution_failure_scan", %correlation_id, error = %error)
+            }
         }
 
         let delay = Duration::from_millis(backoff.observe(progress));
@@ -250,7 +259,10 @@ async fn run(cancellation: CancellationToken) -> anyhow::Result<()> {
         }
     }
 
-    info!(operation = "execution_worker_stop", "Provider and Tool execution worker stopped");
+    info!(
+        operation = "execution_worker_stop",
+        "Provider and Tool execution worker stopped"
+    );
     Ok(())
 }
 

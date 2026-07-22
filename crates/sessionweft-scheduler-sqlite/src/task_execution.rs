@@ -4,9 +4,8 @@ use serde_json::Value;
 use sessionweft_core::EventEnvelope;
 use sessionweft_execution::{AgentStatus, Capability};
 use sessionweft_scheduler::{
-    ClaimLockFenceSnapshot, RepositoryError, TaskAction, TaskExecutionRecord,
-    TaskExecutionRepository, TaskExecutionSpec, TaskExecutionStatus, TaskClaimStatus,
-    ToolExecutionApproval,
+    ClaimLockFenceSnapshot, RepositoryError, TaskAction, TaskClaimStatus, TaskExecutionRecord,
+    TaskExecutionRepository, TaskExecutionSpec, TaskExecutionStatus, ToolExecutionApproval,
 };
 use sqlx::{Row, Sqlite, Transaction};
 use uuid::Uuid;
@@ -125,14 +124,15 @@ impl SqliteSchedulerRepository {
         transaction: &mut Transaction<'_, Sqlite>,
         execution_id: Uuid,
     ) -> Result<TaskExecutionRecord, RepositoryError> {
-        let row = sqlx::query(
-            "SELECT data_json FROM scheduler_task_executions WHERE execution_id = ?",
-        )
-        .bind(execution_id.to_string())
-        .fetch_optional(&mut **transaction)
-        .await
-        .map_err(backend)?
-        .ok_or_else(|| RepositoryError::Conflict(format!("execution {execution_id} not found")))?;
+        let row =
+            sqlx::query("SELECT data_json FROM scheduler_task_executions WHERE execution_id = ?")
+                .bind(execution_id.to_string())
+                .fetch_optional(&mut **transaction)
+                .await
+                .map_err(backend)?
+                .ok_or_else(|| {
+                    RepositoryError::Conflict(format!("execution {execution_id} not found"))
+                })?;
         serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend)
     }
 
@@ -140,13 +140,11 @@ impl SqliteSchedulerRepository {
         transaction: &mut Transaction<'_, Sqlite>,
         claim_id: Uuid,
     ) -> Result<Option<TaskExecutionRecord>, RepositoryError> {
-        let row = sqlx::query(
-            "SELECT data_json FROM scheduler_task_executions WHERE claim_id = ?",
-        )
-        .bind(claim_id.to_string())
-        .fetch_optional(&mut **transaction)
-        .await
-        .map_err(backend)?;
+        let row = sqlx::query("SELECT data_json FROM scheduler_task_executions WHERE claim_id = ?")
+            .bind(claim_id.to_string())
+            .fetch_optional(&mut **transaction)
+            .await
+            .map_err(backend)?;
         row.map(|row| serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend))
             .transpose()
     }
@@ -218,18 +216,18 @@ impl SqliteSchedulerRepository {
         if requirement == 0 {
             return Ok(());
         }
-        let row = sqlx::query(
-            "SELECT data_json FROM scheduler_claim_lock_fences WHERE claim_id = ?",
-        )
-        .bind(claim_id.to_string())
-        .fetch_optional(&mut **transaction)
-        .await
-        .map_err(backend)?
-        .ok_or_else(|| RepositoryError::Conflict("required claim lock fence is missing".into()))?;
-        let snapshot = serde_json::from_str::<ClaimLockFenceSnapshot>(
-            row.get::<&str, _>("data_json"),
-        )
-        .map_err(backend)?;
+        let row =
+            sqlx::query("SELECT data_json FROM scheduler_claim_lock_fences WHERE claim_id = ?")
+                .bind(claim_id.to_string())
+                .fetch_optional(&mut **transaction)
+                .await
+                .map_err(backend)?
+                .ok_or_else(|| {
+                    RepositoryError::Conflict("required claim lock fence is missing".into())
+                })?;
+        let snapshot =
+            serde_json::from_str::<ClaimLockFenceSnapshot>(row.get::<&str, _>("data_json"))
+                .map_err(backend)?;
         if snapshot.agent_id != agent_id || snapshot.fence.expires_at <= now {
             return Err(RepositoryError::Conflict(
                 "claim lock fence is expired or belongs to another Agent".into(),
@@ -417,12 +415,8 @@ impl TaskExecutionRepository for SqliteSchedulerRepository {
         {
             return Err(RepositoryError::AgentUnavailable);
         }
-        let Some(spec) = Self::execution_spec(
-            &mut transaction,
-            claim.workflow_id,
-            &claim.node_id,
-        )
-        .await?
+        let Some(spec) =
+            Self::execution_spec(&mut transaction, claim.workflow_id, &claim.node_id).await?
         else {
             transaction.rollback().await.map_err(backend)?;
             return Ok(None);
@@ -650,17 +644,16 @@ impl TaskExecutionRepository for SqliteSchedulerRepository {
         .map_err(backend)?;
         let mut uncertain = Vec::with_capacity(rows.len());
         for row in rows {
-            let execution_id = Uuid::parse_str(row.get::<&str, _>("execution_id"))
-                .map_err(backend)?;
+            let execution_id =
+                Uuid::parse_str(row.get::<&str, _>("execution_id")).map_err(backend)?;
             let mut transaction = self.pool.begin().await.map_err(backend)?;
             let mut execution = Self::load_execution(&mut transaction, execution_id).await?;
             if execution.status != TaskExecutionStatus::Running {
                 continue;
             }
             execution.status = TaskExecutionStatus::Uncertain;
-            execution.sanitized_error = Some(
-                "worker stopped while external side effect status was unknown".into(),
-            );
+            execution.sanitized_error =
+                Some("worker stopped while external side effect status was unknown".into());
             execution.updated_at = Utc::now();
             Self::save_execution(&mut transaction, &execution).await?;
             Self::execution_event(
@@ -682,13 +675,12 @@ impl TaskExecutionRepository for SqliteSchedulerRepository {
         execution_id: Uuid,
     ) -> Result<Option<TaskExecutionRecord>, RepositoryError> {
         self.ensure_execution_tables().await?;
-        let row = sqlx::query(
-            "SELECT data_json FROM scheduler_task_executions WHERE execution_id = ?",
-        )
-        .bind(execution_id.to_string())
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(backend)?;
+        let row =
+            sqlx::query("SELECT data_json FROM scheduler_task_executions WHERE execution_id = ?")
+                .bind(execution_id.to_string())
+                .fetch_optional(&self.pool)
+                .await
+                .map_err(backend)?;
         row.map(|row| serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend))
             .transpose()
     }

@@ -33,10 +33,8 @@ struct Fixture {
 }
 
 async fn fixture(capabilities: BTreeSet<Capability>) -> Fixture {
-    let path = std::env::temp_dir().join(format!(
-        "sessionweft-task-execution-{}.db",
-        Uuid::new_v4()
-    ));
+    let path =
+        std::env::temp_dir().join(format!("sessionweft-task-execution-{}.db", Uuid::new_v4()));
     let database_url = format!("sqlite://{}", path.display());
     let orchestration_repository = Arc::new(
         SqliteOrchestrationRepository::connect(&database_url)
@@ -229,19 +227,17 @@ async fn provider_execution_is_prepared_once_and_finishes_durably() {
     );
     fixture
         .scheduler
-        .mark_claim_finalized(
-            prepared.id,
-            Uuid::new_v4(),
-            Some("execution-worker"),
-        )
+        .mark_claim_finalized(prepared.id, Uuid::new_v4(), Some("execution-worker"))
         .await
         .expect("finalize marker");
-    assert!(fixture
-        .scheduler
-        .succeeded_unfinalized_executions(100)
-        .await
-        .expect("finalized list")
-        .is_empty());
+    assert!(
+        fixture
+            .scheduler
+            .succeeded_unfinalized_executions(100)
+            .await
+            .expect("finalized list")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -270,16 +266,18 @@ async fn high_risk_tool_requires_claim_scoped_approval() {
         )
         .await
         .expect("register spec");
-    assert!(service
-        .prepare_claim(
-            claimed.claim.id,
-            Utc::now(),
-            Uuid::new_v4(),
-            Some("execution-worker"),
-        )
-        .await
-        .expect("blocked prepare")
-        .is_none());
+    assert!(
+        service
+            .prepare_claim(
+                claimed.claim.id,
+                Utc::now(),
+                Uuid::new_v4(),
+                Some("execution-worker"),
+            )
+            .await
+            .expect("blocked prepare")
+            .is_none()
+    );
 
     service
         .grant_tool_approval(
@@ -294,16 +292,18 @@ async fn high_risk_tool_requires_claim_scoped_approval() {
         )
         .await
         .expect("grant approval");
-    assert!(service
-        .prepare_claim(
-            claimed.claim.id,
-            Utc::now(),
-            Uuid::new_v4(),
-            Some("execution-worker"),
-        )
-        .await
-        .expect("approved prepare")
-        .is_some());
+    assert!(
+        service
+            .prepare_claim(
+                claimed.claim.id,
+                Utc::now(),
+                Uuid::new_v4(),
+                Some("execution-worker"),
+            )
+            .await
+            .expect("approved prepare")
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -401,5 +401,8 @@ async fn released_lock_blocks_execution_time_prepare() {
         )
         .await
         .expect_err("released lock must block execution");
-    assert!(matches!(error, sessionweft_scheduler::RepositoryError::Conflict(_)));
+    assert!(matches!(
+        error,
+        sessionweft_scheduler::RepositoryError::Conflict(_)
+    ));
 }

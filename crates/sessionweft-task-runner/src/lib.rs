@@ -125,7 +125,7 @@ mod tests {
     use sessionweft_core::{MessageRole, ProviderMessage, SessionId};
     use sessionweft_execution::{Permission, RiskLevel, ToolDescriptor};
     use sessionweft_provider::EchoProvider;
-    use sessionweft_scheduler::{TaskExecutionStatus, TASK_EXECUTION_SCHEMA_VERSION};
+    use sessionweft_scheduler::{TASK_EXECUTION_SCHEMA_VERSION, TaskExecutionStatus};
     use uuid::Uuid;
 
     use super::*;
@@ -156,10 +156,7 @@ mod tests {
     async fn provider_action_uses_registered_provider() {
         let mut providers = ProviderRegistry::new();
         providers.register(EchoProvider);
-        let runner = ProviderToolRunner::new(
-            Arc::new(providers),
-            Arc::new(ToolRegistry::new()),
-        );
+        let runner = ProviderToolRunner::new(Arc::new(providers), Arc::new(ToolRegistry::new()));
         let output = runner
             .run(&execution(TaskAction::Provider {
                 provider: "echo".into(),
@@ -178,10 +175,7 @@ mod tests {
     async fn tool_action_uses_registered_tool() {
         let mut tools = ToolRegistry::new();
         tools.register(EchoTool);
-        let runner = ProviderToolRunner::new(
-            Arc::new(ProviderRegistry::new()),
-            Arc::new(tools),
-        );
+        let runner = ProviderToolRunner::new(Arc::new(ProviderRegistry::new()), Arc::new(tools));
         let descriptor = ToolDescriptor {
             name: "echo".into(),
             version: "1".into(),
