@@ -1,6 +1,6 @@
 # Scheduler Task Handover and Retry
 
-Status: implementation slice for issue #30.
+Status: implementation and verification slice for issue #30.
 
 ## Input
 
@@ -37,3 +37,7 @@ When no matching Agent is available, no state is changed and the caller receives
 ## Idempotency
 
 Repeating handover for the same released claim returns the current active claim for the Workflow node and does not create another task or side effect key.
+
+## Verification
+
+The branch must pass read-only dependency lockfile, rustfmt, Clippy and all workspace tests after the one-shot formatter is removed.
