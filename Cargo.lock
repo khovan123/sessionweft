@@ -1588,6 +1588,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "chrono",
  "serde",
  "serde_json",
  "sessionweft-control-plane",
@@ -1600,6 +1601,8 @@ dependencies = [
  "sessionweft-orchestration-sqlite",
  "sessionweft-provider",
  "sessionweft-runtime",
+ "sessionweft-scheduler",
+ "sessionweft-scheduler-sqlite",
  "sessionweft-storage",
  "tokio",
  "tokio-util",

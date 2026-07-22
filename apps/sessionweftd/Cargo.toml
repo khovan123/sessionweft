@@ -9,6 +9,7 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
+chrono.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sessionweft-control-plane = { path = "../../crates/sessionweft-control-plane" }
@@ -21,6 +22,8 @@ sessionweft-orchestration = { path = "../../crates/sessionweft-orchestration" }
 sessionweft-orchestration-sqlite = { path = "../../crates/sessionweft-orchestration-sqlite" }
 sessionweft-provider = { path = "../../crates/sessionweft-provider" }
 sessionweft-runtime = { path = "../../crates/sessionweft-runtime" }
+sessionweft-scheduler = { path = "../../crates/sessionweft-scheduler" }
+sessionweft-scheduler-sqlite = { path = "../../crates/sessionweft-scheduler-sqlite" }
 sessionweft-storage = { path = "../../crates/sessionweft-storage" }
 tokio.workspace = true
 tokio-util.workspace = true
