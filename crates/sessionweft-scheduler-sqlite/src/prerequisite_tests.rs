@@ -13,8 +13,8 @@ use sessionweft_orchestration::{
 };
 use sessionweft_orchestration_sqlite::SqliteOrchestrationRepository;
 use sessionweft_scheduler::{
-    PollingConfig, RequiredLock, SchedulerPlan, SchedulerPollingService, SchedulerService,
-    TaskClaim, TaskRequirement,
+    PollingConfig, RequiredLock, SchedulerPlan, SchedulerPollingService,
+    SchedulerPrerequisiteService, SchedulerService, TaskRequirement,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -164,7 +164,7 @@ async fn approval_dependency_blocks_claim_until_granted() {
 }
 
 #[tokio::test]
-async fn required_lock_blocks_claim_and_snapshots_fencing_token() {
+async fn required_lock_blocks_claim_and_persists_fencing_snapshot() {
     let (orchestration_repository, agent_repository, scheduler_repository) = repositories().await;
     let orchestration = OrchestrationService::new(Arc::clone(&orchestration_repository));
     let session_id = SessionId::new();
@@ -193,24 +193,27 @@ async fn required_lock_blocks_claim_and_snapshots_fencing_token() {
         workspace_id: "workspace".into(),
         path: "src/lib.rs".into(),
     };
-    let mut plan = SchedulerPlan::new(
+    let plan = SchedulerPlan::new(
         &workflow,
         BTreeMap::from([("worker".into(), task_requirement())]),
     )
     .expect("plan");
-    plan.require_lock(
-        &workflow,
-        "worker",
-        RequiredLock {
-            resource: resource.clone(),
-            mode: LockMode::Exclusive,
-        },
-    )
-    .expect("lock requirement");
     SchedulerService::new(Arc::clone(&scheduler_repository))
         .register_plan(&plan)
         .await
         .expect("register plan");
+    let prerequisites = SchedulerPrerequisiteService::new(Arc::clone(&scheduler_repository));
+    prerequisites
+        .require_lock(
+            &workflow,
+            "worker",
+            RequiredLock {
+                resource: resource.clone(),
+                mode: LockMode::Exclusive,
+            },
+        )
+        .await
+        .expect("lock requirement");
     let polling = SchedulerPollingService::new(
         Arc::clone(&scheduler_repository),
         PollingConfig { batch_limit: 100 },
@@ -243,13 +246,17 @@ async fn required_lock_blocks_claim_and_snapshots_fencing_token() {
         .expect("claim tick");
     assert_eq!(claimed.ready_claims_created, 1);
 
-    let row = sqlx::query("SELECT data_json FROM scheduler_claims WHERE status = 'active'")
+    let row = sqlx::query("SELECT claim_id FROM scheduler_claims WHERE status = 'active'")
         .fetch_one(&scheduler_repository.pool)
         .await
         .expect("active claim");
-    let claim = serde_json::from_str::<TaskClaim>(row.get::<&str, _>("data_json"))
-        .expect("claim JSON");
-    let fence = claim.lock_fence.expect("claim lock fence");
-    assert_eq!(fence.lock_id, lease.lock_id);
-    assert_eq!(fence.fencing_token, lease.fencing_token);
+    let claim_id = Uuid::parse_str(row.get::<&str, _>("claim_id")).expect("claim ID");
+    let snapshot = prerequisites
+        .claim_lock_fence(claim_id)
+        .await
+        .expect("fence lookup")
+        .expect("claim fence snapshot");
+    assert_eq!(snapshot.fence.lock_id, lease.lock_id);
+    assert_eq!(snapshot.fence.fencing_token, lease.fencing_token);
+    assert_eq!(snapshot.agent_id, agent.id);
 }
