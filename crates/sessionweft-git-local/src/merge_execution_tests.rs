@@ -215,23 +215,6 @@ async fn conflicting_rebase_returns_paths_and_aborts_cleanly() {
     let entry = fixture.queue_entry(&source_head);
     let executor = GitCliMergeExecutor::default();
 
-    println!(
-        "worktree registry:\n{}",
-        git_output(&fixture.root, &["worktree", "list", "--porcelain"]).await
-    );
-    println!(
-        "branch worktree paths:\n{}",
-        git_output(
-            &fixture.root,
-            &[
-                "for-each-ref",
-                "--format=%(refname)|%(worktreepath)",
-                "refs/heads",
-            ],
-        )
-        .await
-    );
-
     match executor
         .rebase(&entry, &target_head)
         .await
