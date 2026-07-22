@@ -37,9 +37,9 @@ impl SqliteSchedulerRepository {
             .filter_map(|row| {
                 let agent = serde_json::from_str::<AgentRecord>(row.get::<&str, _>("data_json"));
                 match agent {
-                    Ok(agent) if agent.is_stale_at(now) => Some(
-                        Uuid::parse_str(row.get::<&str, _>("claim_id")).map_err(backend),
-                    ),
+                    Ok(agent) if agent.is_stale_at(now) => {
+                        Some(Uuid::parse_str(row.get::<&str, _>("claim_id")).map_err(backend))
+                    }
                     Ok(_) => None,
                     Err(error) => Some(Err(backend(error))),
                 }
@@ -314,10 +314,12 @@ mod tests {
             WorkflowNodeStatus::Ready
         );
 
-        assert!(recovery
-            .recover_stale_claims(Utc::now(), 100, Uuid::new_v4(), Some("scheduler"))
-            .await
-            .expect("idempotent recovery")
-            .is_empty());
+        assert!(
+            recovery
+                .recover_stale_claims(Utc::now(), 100, Uuid::new_v4(), Some("scheduler"))
+                .await
+                .expect("idempotent recovery")
+                .is_empty()
+        );
     }
 }
