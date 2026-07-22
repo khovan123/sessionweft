@@ -1,0 +1,81 @@
+name: saas-runtime
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/sessionweft-saasd/**"
+      - "crates/sessionweft-tenant-runtime/**"
+      - "crates/sessionweft-saas-postgres/**"
+      - "crates/sessionweft-service-postgres/**"
+      - ".github/workflows/saas-runtime.yml"
+  push:
+    branches: [main]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/sessionweft-saasd/**"
+      - "crates/sessionweft-tenant-runtime/**"
+      - "crates/sessionweft-saas-postgres/**"
+      - "crates/sessionweft-service-postgres/**"
+      - ".github/workflows/saas-runtime.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: saas-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tenant-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: sessionweft_admin
+          POSTGRES_PASSWORD: sessionweft_admin
+          POSTGRES_DB: sessionweft
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U sessionweft_admin -d sessionweft"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      PGPASSWORD: sessionweft_admin
+      SESSIONWEFT_TEST_POSTGRES_URL: postgres://sessionweft_runtime:sessionweft_runtime@127.0.0.1:5432/sessionweft
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Create least-privilege Runtime role
+        run: |
+          psql -h 127.0.0.1 -U sessionweft_admin -d sessionweft -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE sessionweft_runtime LOGIN PASSWORD 'sessionweft_runtime' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
+          GRANT CONNECT, CREATE ON DATABASE sessionweft TO sessionweft_runtime;
+          GRANT USAGE, CREATE ON SCHEMA public TO sessionweft_runtime;
+          SQL
+      - name: Verify SaaS Runtime source
+        run: |
+          cargo clippy \
+            -p sessionweft-tenant-runtime \
+            -p sessionweft-saas-postgres \
+            -p sessionweft-service-postgres \
+            -p sessionweft-saasd \
+            --all-targets --locked -- -D warnings
+      - name: Run tenant Runtime isolation and restart test
+        run: |
+          cargo test -p sessionweft-tenant-runtime \
+            --test isolation --locked -- --ignored --test-threads=1
+      - name: Run tenant authority isolation tests
+        run: |
+          cargo test -p sessionweft-saas-postgres \
+            --test tenant_isolation --locked -- --ignored --test-threads=1
