@@ -19,6 +19,7 @@ members = [
   "crates/sessionweft-storage",
   "crates/sessionweft-provider",
   "crates/sessionweft-runtime",
+  "crates/sessionweft-workspace-intelligence",
   "apps/sessionweftd",
   "apps/sessionweft-cli",
 ]
@@ -48,4 +49,9 @@ tokio-util = { version = "0.7", features = ["rt"] }
 tower-http = { version = "0.6", features = ["request-id", "trace"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tree-sitter = "0.25.10"
+tree-sitter-javascript = "0.25.0"
+tree-sitter-python = "0.25.0"
+tree-sitter-rust = "0.24.2"
+tree-sitter-typescript = "0.23.2"
 uuid = { version = "1", features = ["serde", "v4"] }
