@@ -17,7 +17,9 @@ thiserror.workspace = true
 sessionweft-core = { path = "../sessionweft-core" }
 sessionweft-provider = { path = "../sessionweft-provider" }
 sessionweft-runtime = { path = "../sessionweft-runtime" }
+sessionweft-service-postgres = { path = "../sessionweft-service-postgres" }
 sessionweft-storage = { path = "../sessionweft-storage" }
+sqlx.workspace = true
 tempfile = "3"
 tokio.workspace = true
 uuid.workspace = true
