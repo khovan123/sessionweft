@@ -6,6 +6,10 @@ on:
       - "crates/sessionweft-service-postgres/**"
       - "crates/sessionweft-jetstream/**"
       - "deploy/docker-compose.service.yml"
+      - "release/ga-policy-0.1.0.json"
+      - "release/evidence/ga-0.1.0.json"
+      - "docs/09-release/ga-*.md"
+      - ".github/workflows/ga-approval.yml"
       - ".github/workflows/service-mode.yml"
   push:
     branches: [main]
@@ -13,6 +17,10 @@ on:
       - "crates/sessionweft-service-postgres/**"
       - "crates/sessionweft-jetstream/**"
       - "deploy/docker-compose.service.yml"
+      - "release/ga-policy-0.1.0.json"
+      - "release/evidence/ga-0.1.0.json"
+      - "docs/09-release/ga-*.md"
+      - ".github/workflows/ga-approval.yml"
       - ".github/workflows/service-mode.yml"
 
 permissions:
