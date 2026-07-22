@@ -1,8 +1,11 @@
-use std::{fs, io::Write, path::Path, time::{Duration, Instant}};
-
-use sessionweft_workspace_intelligence::{
-    WorkspaceIntelligence, WorkspaceIntelligenceConfig,
+use std::{
+    fs,
+    io::Write,
+    path::Path,
+    time::{Duration, Instant},
 };
+
+use sessionweft_workspace_intelligence::{WorkspaceIntelligence, WorkspaceIntelligenceConfig};
 
 fn write(root: &Path, relative: &str, content: &str) {
     let path = root.join(relative);
