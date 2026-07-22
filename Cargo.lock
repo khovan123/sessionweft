@@ -2649,6 +2649,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "sessionweft-release-gate"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "serde",
+ "serde_json",
+ "sessionweft-core",
+ "sessionweft-knowledge",
+ "sessionweft-provider",
+ "sessionweft-runtime",
+ "sessionweft-service-postgres",
+ "sessionweft-storage",
+ "sqlx",
+ "tempfile",
+ "thiserror 2.0.19",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "sessionweft-runtime"
 version = "0.1.0"
 dependencies = [
