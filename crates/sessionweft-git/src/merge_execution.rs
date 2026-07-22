@@ -170,13 +170,13 @@ impl ConflictResolutionTask {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MergeExecutionResult {
-    Merged(MergeQueueEntry),
-    Requeued(MergeQueueEntry),
+    Merged(Box<MergeQueueEntry>),
+    Requeued(Box<MergeQueueEntry>),
     Conflict {
-        entry: MergeQueueEntry,
-        task: ConflictResolutionTask,
+        entry: Box<MergeQueueEntry>,
+        task: Box<ConflictResolutionTask>,
     },
-    Failed(MergeQueueEntry),
+    Failed(Box<MergeQueueEntry>),
 }
 
 #[async_trait]
@@ -272,7 +272,7 @@ where
                     )
                     .await
                     .map_err(GitWorkspaceError::Repository)?;
-                return Ok(MergeExecutionResult::Failed(failed));
+                return Ok(MergeExecutionResult::Failed(Box::new(failed)));
             }
         };
         if !inspection.worktree_clean {
@@ -287,7 +287,7 @@ where
                 )
                 .await
                 .map_err(GitWorkspaceError::Repository)?;
-            return Ok(MergeExecutionResult::Failed(failed));
+            return Ok(MergeExecutionResult::Failed(Box::new(failed)));
         }
         if inspection.source_commit != entry.head_commit {
             let failed = self
@@ -301,7 +301,7 @@ where
                 )
                 .await
                 .map_err(GitWorkspaceError::Repository)?;
-            return Ok(MergeExecutionResult::Failed(failed));
+            return Ok(MergeExecutionResult::Failed(Box::new(failed)));
         }
 
         if inspection.target_commit != entry.base_commit {
@@ -328,7 +328,7 @@ where
                     )
                     .await
                 {
-                    Ok(merged) => Ok(MergeExecutionResult::Merged(merged)),
+                    Ok(merged) => Ok(MergeExecutionResult::Merged(Box::new(merged))),
                     Err(repository_error) => {
                         let rollback = self
                             .executor
@@ -356,7 +356,7 @@ where
                             )
                             .await
                             .map_err(GitWorkspaceError::Repository)?;
-                        Ok(MergeExecutionResult::Failed(failed))
+                        Ok(MergeExecutionResult::Failed(Box::new(failed)))
                     }
                 }
             }
@@ -372,7 +372,7 @@ where
                     )
                     .await
                     .map_err(GitWorkspaceError::Repository)?;
-                Ok(MergeExecutionResult::Requeued(requeued))
+                Ok(MergeExecutionResult::Requeued(Box::new(requeued)))
             }
         }
     }
@@ -411,7 +411,7 @@ where
                     )
                     .await
                     .map_err(GitWorkspaceError::Repository)?;
-                Ok(MergeExecutionResult::Requeued(requeued))
+                Ok(MergeExecutionResult::Requeued(Box::new(requeued)))
             }
             RebaseOutcome::Conflict {
                 target_commit,
@@ -430,7 +430,10 @@ where
                     )
                     .await
                     .map_err(GitWorkspaceError::Repository)?;
-                Ok(MergeExecutionResult::Conflict { entry, task })
+                Ok(MergeExecutionResult::Conflict {
+                    entry: Box::new(entry),
+                    task: Box::new(task),
+                })
             }
         }
     }
@@ -467,7 +470,7 @@ where
                         )
                         .await
                         .map_err(GitWorkspaceError::Repository)?;
-                    MergeExecutionResult::Merged(merged)
+                    MergeExecutionResult::Merged(Box::new(merged))
                 }
                 Ok(MergeRecoveryObservation::Rebased {
                     target_commit,
@@ -486,7 +489,7 @@ where
                         )
                         .await
                         .map_err(GitWorkspaceError::Repository)?;
-                    MergeExecutionResult::Requeued(requeued)
+                    MergeExecutionResult::Requeued(Box::new(requeued))
                 }
                 Ok(MergeRecoveryObservation::InterruptedRebase { .. }) => {
                     let failed = self
@@ -500,7 +503,7 @@ where
                         )
                         .await
                         .map_err(GitWorkspaceError::Repository)?;
-                    MergeExecutionResult::Failed(failed)
+                    MergeExecutionResult::Failed(Box::new(failed))
                 }
                 Ok(MergeRecoveryObservation::Diverged {
                     target_commit,
@@ -519,7 +522,7 @@ where
                         )
                         .await
                         .map_err(GitWorkspaceError::Repository)?;
-                    MergeExecutionResult::Failed(failed)
+                    MergeExecutionResult::Failed(Box::new(failed))
                 }
                 Ok(MergeRecoveryObservation::MissingWorktree) => {
                     let failed = self
@@ -533,7 +536,7 @@ where
                         )
                         .await
                         .map_err(GitWorkspaceError::Repository)?;
-                    MergeExecutionResult::Failed(failed)
+                    MergeExecutionResult::Failed(Box::new(failed))
                 }
                 Err(error) => {
                     let failed = self
@@ -547,7 +550,7 @@ where
                         )
                         .await
                         .map_err(GitWorkspaceError::Repository)?;
-                    MergeExecutionResult::Failed(failed)
+                    MergeExecutionResult::Failed(Box::new(failed))
                 }
             };
             results.push(result);

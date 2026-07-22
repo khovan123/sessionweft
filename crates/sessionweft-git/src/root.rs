@@ -1,5 +1,9 @@
 include!("lib.rs");
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "merge recovery transitions carry durable Git and audit context"
+)]
 mod merge_execution;
 
 #[expect(
@@ -7,6 +11,10 @@ mod merge_execution;
     reason = "merge queue transitions carry durable gate, time and audit context"
 )]
 mod merge_queue;
+#[expect(
+    clippy::too_many_arguments,
+    reason = "worktree commit transitions carry fence, optimistic-lock and audit context"
+)]
 mod worktree_mutation;
 
 pub use merge_execution::{
