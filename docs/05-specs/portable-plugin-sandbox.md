@@ -48,7 +48,9 @@ Wasmtime core executes the same import-free ABI on supported Linux, macOS and Wi
 
 ## Security update policy
 
-The runtime uses Wasmtime core without `wasmtime-wasi`. This avoids granting WASI capabilities and avoids relying on path permission behavior for isolation. Wasmtime remains subject to RustSec, source/license policy, SBOM and adapter certification checks. A security advisory affecting the configured Wasmtime version blocks release.
+The runtime pins Wasmtime core `36.0.10` without `wasmtime-wasi`. The earlier `38.0.0` candidate was rejected after RustSec identified active advisories in its dependency graph. The selected 36.x maintenance release remains subject to RustSec, source/license policy, SBOM, three-platform tests and adapter certification. No advisory waiver is accepted for the portable sandbox.
+
+This configuration avoids granting WASI capabilities and avoids relying on host path-permission behavior for isolation. Any future Wasmtime update must regenerate the locked graph and pass the complete supply-chain and sandbox qualification gates before merge.
 
 ## Release blockers
 
@@ -58,4 +60,5 @@ The runtime uses Wasmtime core without `wasmtime-wasi`. This avoids granting WAS
 - infinite execution that escapes fuel and epoch interruption;
 - output allocation before output-length validation;
 - platform-specific test failure;
+- RustSec finding in the active Wasmtime graph;
 - production activation without exact-commit adapter certification.
