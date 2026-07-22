@@ -1,0 +1,21 @@
+[package]
+name = "sessionweft-tenant-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+chrono.workspace = true
+sessionweft-control-plane = { path = "../sessionweft-control-plane" }
+sessionweft-provider = { path = "../sessionweft-provider" }
+sessionweft-runtime = { path = "../sessionweft-runtime" }
+sessionweft-service-postgres = { path = "../sessionweft-service-postgres" }
+sessionweft-tenancy = { path = "../sessionweft-tenancy" }
+thiserror.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+sessionweft-core = { path = "../sessionweft-core" }
