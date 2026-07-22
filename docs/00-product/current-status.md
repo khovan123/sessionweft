@@ -1,82 +1,68 @@
 # Project Status
 
 Last updated: 2026-07-22  
-Current phase: **Phase 2 — First Runtime Vertical Slice**  
-Implementation status: **Authorized by Architecture/ADR/RFC baseline**
+Current phase: **General Availability — SessionWeft 0.1.0**  
+Decision: **Approved for GA within the declared scope**
 
-## Completed gates
+## Completed phases
 
-### Phase -1 — Capability Matrix
+- [x] Phase -1 — Capability Matrix
+- [x] Phase 0 — Landscape Research
+- [x] Architecture Review
+- [x] ADR baseline
+- [x] RFC and Production Specification
+- [x] Phase 2 implementation
+- [x] Production testing and chaos/recovery qualification
+- [x] Release Candidate gate
+- [x] Owner-authorized Architecture, Security and Operations GA review
+- [x] General Availability gate
 
-- [x] Project domains mapped to capability IDs
-- [x] Must/Should/Could priorities defined
-- [x] Observable acceptance criteria defined
-- [x] Coding Agent, Terminal and Vector Store gaps corrected
-- [x] Security, recovery, deployment and compatibility reviewed
-- [x] Capability Matrix approved
+## GA scope
 
-### Phase 0 — Landscape Research baseline
+- SQLite local single-user Runtime mode.
+- Authenticated single-tenant service mode using PostgreSQL and NATS JetStream.
+- Runtime-owned Session, Workflow, Agent, Memory, Lock, Git, Provider, Tool and event state.
+- CLI, Ratatui TUI and VS Code clients as stateless Runtime adapters.
+- Official MCP SDK integration and one-time approvals.
+- Linux production plugin sandbox using bubblewrap.
+- Revision-aware workspace intelligence for Rust, TypeScript/JavaScript and Python.
 
-- [x] State, event, provider and security foundations researched
-- [x] Wave B/C candidates assigned dispositions
-- [x] Runtime-owned state invariant preserved
-- [x] Replacement boundaries defined for external systems
-- [x] Technology shortlist recorded in `phase-0-synthesis.md`
-- [x] First-slice scope and deferred work separated
+## Explicit exclusions
 
-### Architecture, ADR and RFC baseline
+- Multi-tenant SaaS isolation and billing.
+- Production plugin sandbox guarantees outside Linux.
+- Unqualified future provider, plugin, storage or deployment adapters.
+- Deployments that disable required authentication, approval, fencing, durable storage or audit controls.
 
-- [x] Architecture baseline v1
-- [x] ADR-0001 Session persistence
-- [x] ADR-0002 Event transport and outbox
-- [x] ADR-0003 Provider contract
-- [x] ADR-0004 Security and observability
-- [x] RFC-0001 Runtime vertical slice
-- [x] Production Specification v0
+## Release guarantees
 
-These approvals authorize the first constrained implementation slice. They do not declare the platform generally available.
+- Locked Rust dependency graph, rustfmt, Clippy with warnings denied and workspace tests.
+- PostgreSQL/JetStream service-mode ownership, redelivery and recovery tests.
+- Durable scheduler claims, stale-Agent handover and external side-effect idempotency.
+- Hierarchical lock leases and fencing-token enforcement.
+- Isolated Git worktrees, compare-and-swap merge queue and conflict recovery.
+- Default-deny Tool/MCP execution with durable approval consumption.
+- Backup/restore, migration, provider outage and network-partition drills.
+- Secret scanning, dependency audit, SBOM, checksums and provenance attestations.
+- Metrics, alerts, dashboard and operations runbooks.
 
-## Active implementation scope
+## GA approval model
 
-1. Rust workspace and CI.
-2. Versioned Session aggregate.
-3. SQLite WAL repository.
-4. Transactional outbox.
-5. Bounded local event transport.
-6. Provider registry.
-7. Echo and Ollama-compatible providers.
-8. Runtime orchestration service.
-9. Bootstrap HTTP control API and CLI.
-10. Authentication, correlation, redaction and structured logs.
-11. Concurrency, persistence and recovery tests.
+The human repository owner `khovan123` is the approving authority. `sessionweft-automation` performs delegated research and evidence analysis. The authorization, review reports, scope and residual risks are recorded under `docs/09-release/ga-*.md`.
 
-## Deferred implementation streams
+The GA gate cannot pass when:
 
-| Issue | Stream | Current decision |
-|---|---|---|
-| #4 | Memory engines | Runtime-owned typed baseline first; adapters later |
-| #5 | Workflow durability | Persisted Runtime DAG planned after core Session slice |
-| #6 | Git/workspace isolation | Restricted Git CLI adapter first |
-| #7 | MCP/plugin isolation | Official Rust SDK behind policy gate |
-| #9 | Workspace parsing/indexing | tree-sitter + ripgrep baseline |
-| #13 | Coding-agent architecture | Runtime roles; no isolated durable CLI sessions |
-| #14 | Locking and leases | Persisted hierarchical leases with fencing |
-| #15 | CLI/TUI/IDE | CLI first; TUI and IDE after stable API |
-| #16 | Vector storage | Optional projection; pgvector before mandatory Qdrant |
+- required evidence identifies `TBD` instead of the tested commit;
+- a required gate is failed or waived;
+- a Critical or High security finding remains open;
+- Architecture, Security or Operations GA approval is missing;
+- the approving authority is not recorded as human;
+- release evidence has no supporting artefacts.
 
-## Current approved direction
+## Release artefacts
 
-- Rust 1.88+ and Tokio.
-- Runtime-owned Session identity and state.
-- SQLite WAL local mode and PostgreSQL service mode.
-- Optimistic concurrency with expected versions.
-- Transactional outbox.
-- Local bounded event adapter and NATS JetStream production adapter.
-- Direct provider adapters behind a common contract.
-- Echo and Ollama-compatible reference providers.
-- Default-deny external execution.
-- Structured telemetry without request-body logging.
-
-## Implementation gate
-
-A code PR may merge only when formatting, lint, unit/integration tests, concurrency tests, recovery tests, authentication tests and documentation checks pass.
+- GA policy: `release/ga-policy-0.1.0.json`
+- GA evidence template: `release/evidence/ga-0.1.0.json`
+- GA workflow: `.github/workflows/ga-approval.yml`
+- Release workflow: `.github/workflows/release.yml`
+- GA record: `docs/09-release/general-availability.md`
