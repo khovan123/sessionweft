@@ -1,0 +1,49 @@
+name: expect-merge-queue-audit-context
+
+on:
+  push:
+    branches:
+      - implementation/git-merge-queue
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Document merge queue audit context lint
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('crates/sessionweft-git/src/merge_queue.rs')
+          text = path.read_text()
+          target = '#[async_trait]\npub trait GitMergeQueueRepository: Send + Sync {'
+          replacement = '''#[expect(
+    clippy::too_many_arguments,
+    reason = "repository transitions carry durable gate, time and audit context"
+)]
+#[async_trait]
+pub trait GitMergeQueueRepository: Send + Sync {'''
+          if replacement not in text:
+              if target not in text:
+                  raise SystemExit('merge queue repository trait marker not found')
+              text = text.replace(target, replacement, 1)
+          path.write_text(text)
+          PY
+          cargo fmt --all
+      - name: Commit documented lint expectation
+        run: |
+          if [ -n "$(git status --porcelain -- '*.rs')" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- '*.rs'
+            git commit -m "fix: document merge queue audit context"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
