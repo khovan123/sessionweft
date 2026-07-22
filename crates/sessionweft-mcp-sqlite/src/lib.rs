@@ -202,7 +202,9 @@ impl McpApprovalRepository for SqliteMcpApprovalRepository {
         let mut record = Self::load(&mut transaction, command.grant_id).await?;
         if record.consumed_at.is_some() {
             transaction.rollback().await.map_err(backend)?;
-            return Err(McpApprovalRepositoryError::AlreadyConsumed(command.grant_id));
+            return Err(McpApprovalRepositoryError::AlreadyConsumed(
+                command.grant_id,
+            ));
         }
         if record.grant.expires_at <= command.consumed_at {
             transaction.rollback().await.map_err(backend)?;
@@ -233,7 +235,9 @@ impl McpApprovalRepository for SqliteMcpApprovalRepository {
         .map_err(backend)?;
         if result.rows_affected() != 1 {
             transaction.rollback().await.map_err(backend)?;
-            return Err(McpApprovalRepositoryError::AlreadyConsumed(command.grant_id));
+            return Err(McpApprovalRepositoryError::AlreadyConsumed(
+                command.grant_id,
+            ));
         }
         Self::insert_event(
             &mut transaction,
