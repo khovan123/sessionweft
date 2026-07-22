@@ -77,7 +77,6 @@ jobs:
       - name: Assemble release bundle
         run: |
           release="sessionweft-${VERSION#v}-linux-x86_64"
-          echo "RELEASE_NAME=$release" >> "$GITHUB_ENV"
           mkdir -p "dist/$release/bin" "dist/$release/extension" "dist/$release/sbom"
           install -m 0755 target/release/sessionweftd "dist/$release/bin/sessionweftd"
           install -m 0755 target/release/sessionweft "dist/$release/bin/sessionweft"
@@ -101,7 +100,7 @@ jobs:
       - name: Attest bundle SBOM
         uses: actions/attest@v4
         with:
-          subject-path: dist/${{ env.RELEASE_NAME }}.tar.gz
+          subject-path: dist/sessionweft-*.tar.gz
           sbom-path: dist/sessionweft-release.cdx.json
       - uses: actions/upload-artifact@v4
         with:
