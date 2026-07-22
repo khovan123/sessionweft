@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use sessionweft_core::{MessageRole, SessionId};
+use sessionweft_core::MessageRole;
 use sessionweft_provider::{OllamaProvider, ProviderRegistry};
 use sessionweft_runtime::{RuntimeError, RuntimeService};
 use sessionweft_storage::{SessionRepository, SqliteSessionRepository};
@@ -55,7 +55,7 @@ async fn provider_outage_preserves_committed_user_input_for_recovery() {
     ));
 
     let persisted = repository
-        .get(SessionId::from(session.id))
+        .get(session.id)
         .await
         .expect("load")
         .expect("session");
