@@ -6,6 +6,12 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[lib]
+test = false
+
+[lints.clippy]
+derivable_impls = "allow"
+
 [dependencies]
 async-trait.workspace = true
 reqwest.workspace = true
