@@ -151,10 +151,8 @@ impl AgentRepository for SqliteAgentRepository {
             .fetch_optional(&self.pool)
             .await
             .map_err(backend)?;
-        row.map(|row| {
-            serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend)
-        })
-        .transpose()
+        row.map(|row| serde_json::from_str(row.get::<&str, _>("data_json")).map_err(backend))
+            .transpose()
     }
 
     async fn save(
@@ -275,12 +273,7 @@ mod tests {
         );
         let service = AgentService::new(Arc::clone(&repository));
         let agent = service
-            .register(
-                SessionId::new(),
-                manifest(),
-                Uuid::new_v4(),
-                Some("test"),
-            )
+            .register(SessionId::new(), manifest(), Uuid::new_v4(), Some("test"))
             .await
             .expect("register");
         let agent = service
@@ -311,12 +304,7 @@ mod tests {
         );
         let service = AgentService::new(Arc::clone(&repository));
         let agent = service
-            .register(
-                SessionId::new(),
-                manifest(),
-                Uuid::new_v4(),
-                Some("test"),
-            )
+            .register(SessionId::new(), manifest(), Uuid::new_v4(), Some("test"))
             .await
             .expect("register");
         let agent = service

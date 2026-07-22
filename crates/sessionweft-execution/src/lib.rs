@@ -175,9 +175,7 @@ impl AgentRecord {
         }
         let task_id = task_id.into().trim().to_owned();
         if task_id.is_empty() {
-            return Err(ExecutionError::Validation(
-                "task ID cannot be empty".into(),
-            ));
+            return Err(ExecutionError::Validation("task ID cannot be empty".into()));
         }
         self.current_task_id = Some(task_id.clone());
         self.advance();
@@ -196,9 +194,10 @@ impl AgentRecord {
         actor_id: Option<&str>,
     ) -> Result<EventEnvelope, ExecutionError> {
         self.ensure_running(expected_version)?;
-        let task_id = self.current_task_id.take().ok_or_else(|| {
-            ExecutionError::InvalidTransition("agent does not own a task".into())
-        })?;
+        let task_id = self
+            .current_task_id
+            .take()
+            .ok_or_else(|| ExecutionError::InvalidTransition("agent does not own a task".into()))?;
         self.advance();
         Ok(self.event(
             "agent.task_released",
@@ -880,11 +879,7 @@ where
         self.run_git(["diff", "--no-ext-diff", "--"], None).await
     }
 
-    pub async fn commit_staged(
-        &self,
-        message: &str,
-        fence: &GitFence,
-    ) -> Result<String, GitError> {
+    pub async fn commit_staged(&self, message: &str, fence: &GitFence) -> Result<String, GitError> {
         if message.trim().is_empty() || message.len() > 1_000 {
             return Err(GitError::InvalidInput(
                 "commit message must be between 1 and 1000 bytes".into(),
@@ -1054,9 +1049,7 @@ mod tests {
     #[test]
     fn agent_lifecycle_is_versioned_and_task_owned() {
         let mut agent = test_agent(BTreeSet::new());
-        agent
-            .start(0, Uuid::new_v4(), Some("test"))
-            .expect("start");
+        agent.start(0, Uuid::new_v4(), Some("test")).expect("start");
         agent
             .assign_task(1, "task-1", Uuid::new_v4(), Some("test"))
             .expect("assign");
@@ -1125,8 +1118,8 @@ mod tests {
     async fn restricted_runner_rejects_unlisted_programs() {
         let root = env::temp_dir().join(format!("sessionweft-process-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).expect("root");
-        let runner = RestrictedProcessRunner::new(&root, BTreeMap::new(), BTreeSet::new())
-            .expect("runner");
+        let runner =
+            RestrictedProcessRunner::new(&root, BTreeMap::new(), BTreeSet::new()).expect("runner");
         let error = runner
             .run(&ProcessSpec {
                 program: "sh".into(),
