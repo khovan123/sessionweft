@@ -1,0 +1,34 @@
+name: cleanup-production-hardening
+
+on:
+  push:
+    branches:
+      - release/production-hardening-v2
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Clean duplicated preparation output
+        run: |
+          python .github/scripts/cleanup_production_hardening.py
+          cargo fmt --all
+          cargo generate-lockfile
+      - name: Commit cleaned source
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Cargo.lock apps/sessionweftd crates/sessionweft-observability
+            git commit -m "fix: normalize production hardening source"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
