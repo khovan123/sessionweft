@@ -461,7 +461,7 @@ async fn archive_session(
         .map_err(|error| ApiError::from_runtime(error, correlation_id))
 }
 
-pub(super) fn parse_session_id(value: &str, correlation_id: Uuid) -> Result<SessionId, ApiError> {
+pub(crate) fn parse_session_id(value: &str, correlation_id: Uuid) -> Result<SessionId, ApiError> {
     value.parse().map_err(|_| {
         ApiError::new(
             StatusCode::BAD_REQUEST,
