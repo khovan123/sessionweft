@@ -33,7 +33,7 @@ jobs:
           cargo install cargo-audit --locked
           cargo install cargo-deny --locked
 
-      - name: Prove optional SQLx RSA packages are inactive
+      - name: Prove SQLx MySQL and RSA are absent from the active graph
         run: |
           if cargo tree -i rsa --target all > rsa-tree.log 2>&1; then
             cat rsa-tree.log
@@ -51,7 +51,7 @@ jobs:
       - name: RustSec advisory audit
         run: |
           set +e
-          cargo audit --ignore RUSTSEC-2023-0071 --json > cargo-audit.json 2> cargo-audit.stderr
+          cargo audit --json > cargo-audit.json 2> cargo-audit.stderr
           status=$?
           cat cargo-audit.stderr
           python3 -m json.tool cargo-audit.json || cat cargo-audit.json
