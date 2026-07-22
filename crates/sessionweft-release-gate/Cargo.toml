@@ -15,6 +15,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 sessionweft-core = { path = "../sessionweft-core" }
+sessionweft-knowledge = { path = "../sessionweft-knowledge" }
 sessionweft-provider = { path = "../sessionweft-provider" }
 sessionweft-runtime = { path = "../sessionweft-runtime" }
 sessionweft-service-postgres = { path = "../sessionweft-service-postgres" }
