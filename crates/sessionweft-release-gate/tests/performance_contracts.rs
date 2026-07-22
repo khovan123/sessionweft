@@ -1,11 +1,7 @@
 use std::time::{Duration, Instant};
 
-use sessionweft_core::{
-    MessageRole, ProviderMessage, ProviderRequest, SessionId,
-};
-use sessionweft_knowledge::{
-    ContextBudget, ContextBuilder, ContextCandidate, ContextKind,
-};
+use sessionweft_core::{MessageRole, ProviderMessage, ProviderRequest, SessionId};
+use sessionweft_knowledge::{ContextBudget, ContextBuilder, ContextCandidate, ContextKind};
 use sessionweft_provider::{EchoProvider, Provider};
 
 #[test]
@@ -36,7 +32,14 @@ fn context_builder_keeps_large_candidate_sets_within_budget() {
     )
     .expect("context package");
     assert!(package.estimated_tokens <= package.usable_budget);
-    assert!(package.items.iter().filter(|item| item.candidate.required).count() == 3);
+    assert!(
+        package
+            .items
+            .iter()
+            .filter(|item| item.candidate.required)
+            .count()
+            == 3
+    );
     assert!(!package.omitted.is_empty());
     assert!(started.elapsed() <= Duration::from_secs(2));
 }

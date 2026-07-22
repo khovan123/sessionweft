@@ -65,23 +65,21 @@ async fn additive_migrations_preserve_legacy_data_and_are_idempotent() {
             .expect("table lookup");
         assert_eq!(exists.as_deref(), Some(table));
     }
-    let sentinel = sqlx::query_scalar::<_, String>(
-        "SELECT value FROM hardening_legacy_sentinel WHERE id = 1",
-    )
-    .fetch_one(first.pool())
-    .await
-    .expect("legacy data");
+    let sentinel =
+        sqlx::query_scalar::<_, String>("SELECT value FROM hardening_legacy_sentinel WHERE id = 1")
+            .fetch_one(first.pool())
+            .await
+            .expect("legacy data");
     assert_eq!(sentinel, "preserve-me");
     drop(first);
 
     let second = PostgresServiceDatabase::connect(&url, "migration-runtime-b")
         .await
         .expect("idempotent migration");
-    let sentinel = sqlx::query_scalar::<_, String>(
-        "SELECT value FROM hardening_legacy_sentinel WHERE id = 1",
-    )
-    .fetch_one(second.pool())
-    .await
-    .expect("legacy data after second migration");
+    let sentinel =
+        sqlx::query_scalar::<_, String>("SELECT value FROM hardening_legacy_sentinel WHERE id = 1")
+            .fetch_one(second.pool())
+            .await
+            .expect("legacy data after second migration");
     assert_eq!(sentinel, "preserve-me");
 }

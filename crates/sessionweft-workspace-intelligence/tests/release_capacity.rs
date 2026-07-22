@@ -1,8 +1,6 @@
 use std::{fs, io::Write, time::Instant};
 
-use sessionweft_workspace_intelligence::{
-    WorkspaceIntelligence, WorkspaceIntelligenceConfig,
-};
+use sessionweft_workspace_intelligence::{WorkspaceIntelligence, WorkspaceIntelligenceConfig};
 
 #[test]
 #[ignore = "release capacity profile"]
@@ -35,13 +33,12 @@ fn indexes_release_capacity_and_updates_one_dependency_slice() {
     .expect("build");
     let build_elapsed = started.elapsed();
     assert_eq!(intelligence.files().len(), file_count);
-    assert!(build_elapsed.as_secs() <= 300, "index build exceeded five minutes");
+    assert!(
+        build_elapsed.as_secs() <= 300,
+        "index build exceeded five minutes"
+    );
 
-    fs::write(
-        src.join("module_1.rs"),
-        "pub fn value_1() -> usize { 2 }\n",
-    )
-    .expect("change");
+    fs::write(src.join("module_1.rs"), "pub fn value_1() -> usize { 2 }\n").expect("change");
     let update_started = Instant::now();
     let update = intelligence
         .update_paths([std::path::Path::new("src/module_1.rs")])

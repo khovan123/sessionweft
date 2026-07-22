@@ -152,7 +152,9 @@ pub fn evaluate(
                 if level == GateLevel::Preflight {
                     warnings.push(format!("gate '{gate}' is waived: {}", item.notes));
                 } else {
-                    blockers.push(format!("release gate '{gate}' cannot be waived at {level:?}"));
+                    blockers.push(format!(
+                        "release gate '{gate}' cannot be waived at {level:?}"
+                    ));
                 }
             }
             Some(item) => blockers.push(format!(
@@ -178,7 +180,10 @@ pub fn evaluate(
 
     if level != GateLevel::Preflight {
         for role in &policy.required_signoff_roles {
-            let decision = evidence.signoffs.iter().find(|signoff| signoff.role == *role);
+            let decision = evidence
+                .signoffs
+                .iter()
+                .find(|signoff| signoff.role == *role);
             match decision {
                 Some(signoff)
                     if level == GateLevel::ReleaseCandidate

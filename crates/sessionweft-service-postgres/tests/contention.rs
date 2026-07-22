@@ -1,12 +1,8 @@
 use std::time::{Duration, Instant};
 
 use sessionweft_core::SessionId;
-use sessionweft_orchestration::{
-    LockMode, LockRequest, LockResource, OrchestrationRepository,
-};
-use sessionweft_service_postgres::{
-    PostgresOrchestrationRepository, PostgresServiceDatabase,
-};
+use sessionweft_orchestration::{LockMode, LockRequest, LockResource, OrchestrationRepository};
+use sessionweft_service_postgres::{PostgresOrchestrationRepository, PostgresServiceDatabase};
 use tokio::task::JoinSet;
 use uuid::Uuid;
 

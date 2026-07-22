@@ -15,8 +15,7 @@ async fn provider_outage_preserves_committed_user_input_for_recovery() {
     );
     let mut providers = ProviderRegistry::new();
     providers.register(
-        OllamaProvider::new("http://127.0.0.1:9", Duration::from_millis(100))
-            .expect("provider"),
+        OllamaProvider::new("http://127.0.0.1:9", Duration::from_millis(100)).expect("provider"),
     );
     let runtime = RuntimeService::new(Arc::clone(&repository), Arc::new(providers));
     let correlation_id = Uuid::new_v4();
