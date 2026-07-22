@@ -1,0 +1,126 @@
+name: tenant-schema-repair
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.head_ref == 'feature/tenant-runtime-api'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ github.token }}
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt
+      - name: Restore main and apply one schema constructor
+        run: |
+          git fetch origin main
+          git show origin/main:crates/sessionweft-service-postgres/src/database.rs > /tmp/database.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('/tmp/database.rs').read_text()
+          old = '''        let instance_id = instance_id.into().trim().to_owned();
+        if instance_id.is_empty() || instance_id.len() > 256 {
+            return Err(ServiceDatabaseError::Validation(
+                "runtime instance ID must be between 1 and 256 bytes".into(),
+            ));
+        }'''
+          if source.count(old) != 1:
+              raise SystemExit('main instance validation marker changed')
+          source = source.replace(old, '        let instance_id = validate_instance_id(instance_id.into())?;', 1)
+          marker = '''    #[must_use]
+    pub fn pool(&self) -> &PgPool {'''
+          method = '''    pub async fn connect_in_schema(
+        database_url: &str,
+        instance_id: impl Into<String>,
+        schema: &str,
+    ) -> Result<Self, ServiceDatabaseError> {
+        let instance_id = validate_instance_id(instance_id.into())?;
+        validate_schema_name(schema)?;
+        let quoted_schema = format!("\\\"{schema}\\\"");
+        let admin = PgPoolOptions::new()
+            .max_connections(1)
+            .acquire_timeout(Duration::from_secs(10))
+            .connect(database_url)
+            .await?;
+        sqlx::query(&format!("CREATE SCHEMA IF NOT EXISTS {quoted_schema}"))
+            .execute(&admin)
+            .await?;
+        admin.close().await;
+
+        let search_path = format!("SET search_path TO {quoted_schema}, public");
+        let pool = PgPoolOptions::new()
+            .max_connections(20)
+            .acquire_timeout(Duration::from_secs(10))
+            .after_connect(move |connection, _metadata| {
+                let search_path = search_path.clone();
+                Box::pin(async move {
+                    sqlx::Executor::execute(&mut *connection, search_path.as_str()).await?;
+                    Ok(())
+                })
+            })
+            .connect(database_url)
+            .await?;
+        let database = Self {
+            pool,
+            instance_id,
+            outbox_claim_ttl: Duration::from_secs(30),
+        };
+        database.migrate().await?;
+        Ok(database)
+    }
+
+'''
+          if source.count(marker) != 1:
+              raise SystemExit('main pool marker changed')
+          source = source.replace(marker, method + marker, 1)
+          error_marker = '''#[derive(Debug, Error)]
+pub enum ServiceDatabaseError'''
+          helpers = '''fn validate_instance_id(value: String) -> Result<String, ServiceDatabaseError> {
+    let value = value.trim().to_owned();
+    if value.is_empty() || value.len() > 256 {
+        return Err(ServiceDatabaseError::Validation(
+            "runtime instance ID must be between 1 and 256 bytes".into(),
+        ));
+    }
+    Ok(value)
+}
+
+fn validate_schema_name(value: &str) -> Result<(), ServiceDatabaseError> {
+    if value.len() < 3
+        || value.len() > 63
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+        || !value.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+    {
+        return Err(ServiceDatabaseError::Validation(
+            "PostgreSQL schema name must be 3-63 lowercase letters, numbers or underscores and start with a letter".into(),
+        ));
+    }
+    Ok(())
+}
+
+'''
+          if source.count(error_marker) != 1:
+              raise SystemExit('main error marker changed')
+          source = source.replace(error_marker, helpers + error_marker, 1)
+          Path('crates/sessionweft-service-postgres/src/database.rs').write_text(source)
+          PY
+          rm .github/workflows/tenant-schema-repair.yml
+          cargo fmt --all
+      - name: Commit repaired source and remove helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/sessionweft-service-postgres/src/database.rs .github/workflows/tenant-schema-repair.yml
+          git commit -m "fix(service): restore one tenant schema constructor"
+          git push origin HEAD:${{ github.head_ref }}
