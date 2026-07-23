@@ -3,6 +3,7 @@ mod database;
 mod inbox;
 mod memory;
 mod orchestration;
+mod schema;
 mod session;
 
 pub use agent::PostgresAgentRepository;

@@ -2928,9 +2928,40 @@ dependencies = [
  "serde_json",
  "sessionweft-billing",
  "sessionweft-tenancy",
+ "sha2",
  "sqlx",
  "thiserror 2.0.19",
  "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "sessionweft-saasd"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "chrono",
+ "serde",
+ "serde_json",
+ "sessionweft-billing",
+ "sessionweft-billing-stripe",
+ "sessionweft-control-plane",
+ "sessionweft-core",
+ "sessionweft-execution",
+ "sessionweft-knowledge",
+ "sessionweft-orchestration",
+ "sessionweft-provider",
+ "sessionweft-saas-postgres",
+ "sessionweft-tenancy",
+ "sessionweft-tenant-runtime",
+ "sha2",
+ "subtle",
+ "thiserror 2.0.19",
+ "tokio",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
  "uuid",
 ]
 
@@ -3024,6 +3055,22 @@ dependencies = [
  "async-trait",
  "chrono",
  "serde",
+ "thiserror 2.0.19",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "sessionweft-tenant-runtime"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "sessionweft-control-plane",
+ "sessionweft-core",
+ "sessionweft-provider",
+ "sessionweft-runtime",
+ "sessionweft-service-postgres",
+ "sessionweft-tenancy",
  "thiserror 2.0.19",
  "tokio",
  "uuid",

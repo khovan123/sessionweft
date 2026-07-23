@@ -11,7 +11,7 @@ use uuid::Uuid;
 pub struct PostgresServiceDatabase {
     pub(crate) pool: PgPool,
     pub(crate) instance_id: String,
-    outbox_claim_ttl: Duration,
+    pub(crate) outbox_claim_ttl: Duration,
 }
 
 impl PostgresServiceDatabase {
