@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "release": "0.2.0",
+  "tag": "v0.2.0",
+  "status": "approved",
+  "ga_decision": "docs/09-release/general-availability-0.2.0.md",
+  "policy": "release/ga-policy-0.2.0.json",
+  "evidence_template": "release/evidence/ga-0.2.0.json",
+  "publish_from": "main",
+  "immutable": true,
+  "supersedes_scope": "0.1.0",
+  "preserves": ["v0.1.0"]
+}
