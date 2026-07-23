@@ -1,0 +1,124 @@
+name: publish-v0.2.0-tag
+
+on:
+  workflow_run:
+    workflows: ["ga-approval"]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: publish-v0.2.0-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    if: >-
+      github.repository == 'khovan123/sessionweft' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_COMMIT: ${{ github.event.workflow_run.head_sha }}
+      TAG: v0.2.0
+    steps:
+      - name: Require verified v0.1.0 publication
+        run: |
+          gh release view v0.1.0 --json tagName,isDraft,isPrerelease,assets > /tmp/v0.1.0-release.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          release = json.loads(Path('/tmp/v0.1.0-release.json').read_text())
+          if release['tagName'] != 'v0.1.0' or release['isDraft'] or release['isPrerelease']:
+              raise SystemExit('v0.1.0 is not a published stable release')
+          names = {asset['name'] for asset in release['assets']}
+          required = {'sessionweft.cdx.json', 'ga-verified.json'}
+          if not required.issubset(names):
+              raise SystemExit(f'v0.1.0 publication assets are incomplete: {sorted(names)}')
+          runtime = [name for name in names if name.startswith('sessionweft-0.1.0-') and name.endswith('.tar.gz')]
+          runtime_sha = [name for name in names if name.startswith('sessionweft-0.1.0-') and name.endswith('.tar.gz.sha256')]
+          vscode = {'sessionweft-vscode-0.1.0.tar.gz', 'sessionweft-vscode-0.1.0.tar.gz.sha256'}
+          if not runtime or len(runtime) != len(runtime_sha) or not vscode.issubset(names):
+              raise SystemExit(f'v0.1.0 archive assets are incomplete: {sorted(names)}')
+          PY
+
+      - name: Require every exact-commit release gate
+        run: |
+          for attempt in $(seq 1 60); do
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_COMMIT}&per_page=100" > /tmp/runs.json
+            if python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          required = {
+              "ci",
+              "security-supply-chain",
+              "service-mode",
+              "production-hardening",
+              "saas-runtime",
+              "phase3-qualification",
+              "ga-approval",
+          }
+          runs = json.loads(Path('/tmp/runs.json').read_text())["workflow_runs"]
+          latest = {}
+          for run in runs:
+              name = run["name"]
+              if name not in required:
+                  continue
+              current = latest.get(name)
+              if current is None or run["run_number"] > current["run_number"]:
+                  latest[name] = run
+          missing = required - latest.keys()
+          failed = {
+              name: run.get("conclusion")
+              for name, run in latest.items()
+              if run.get("status") == "completed" and run.get("conclusion") != "success"
+          }
+          pending = {
+              name: run.get("status")
+              for name, run in latest.items()
+              if run.get("status") != "completed"
+          }
+          if failed:
+              raise SystemExit(f"exact-commit release gate failed: {failed}")
+          if missing or pending:
+              print(f"waiting for exact-commit gates; missing={sorted(missing)} pending={pending}")
+              raise SystemExit(75)
+          print(f"all exact-commit release gates passed for {os.environ['TARGET_COMMIT']}")
+          PY
+            then
+              break
+            else
+              status=$?
+              if [[ "$status" -ne 75 ]]; then
+                exit "$status"
+              fi
+              sleep 20
+            fi
+            if [[ "$attempt" -eq 60 ]]; then
+              echo "exact-commit gates did not finish before timeout" >&2
+              exit 1
+            fi
+          done
+
+      - name: Verify main still identifies the tested commit
+        run: |
+          main_commit="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
+          test "$main_commit" = "$TARGET_COMMIT"
+
+      - name: Create immutable v0.2.0 tag
+        run: |
+          if existing="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq .object.sha 2>/dev/null)"; then
+            test "$existing" = "$TARGET_COMMIT"
+            echo "$TAG already identifies the exact tested commit"
+          else
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              -f ref="refs/tags/${TAG}" \
+              -f sha="$TARGET_COMMIT" >/dev/null
+          fi

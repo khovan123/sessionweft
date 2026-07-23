@@ -6,10 +6,14 @@ on:
       - "crates/sessionweft-service-postgres/**"
       - "crates/sessionweft-jetstream/**"
       - "deploy/docker-compose.service.yml"
-      - "release/ga-policy-0.1.0.json"
-      - "release/evidence/ga-0.1.0.json"
+      - "release/ga-policy-0.2.0.json"
+      - "release/evidence/ga-0.2.0.json"
       - "docs/09-release/ga-*.md"
+      - "docs/09-release/general-availability-0.2.0.md"
       - ".github/workflows/ga-approval.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/publish-v0.2.0-tag.yml"
+      - ".github/workflows/verify-v0.2.0-publication.yml"
       - ".github/workflows/service-mode.yml"
   push:
     branches: [main]
@@ -17,14 +21,22 @@ on:
       - "crates/sessionweft-service-postgres/**"
       - "crates/sessionweft-jetstream/**"
       - "deploy/docker-compose.service.yml"
-      - "release/ga-policy-0.1.0.json"
-      - "release/evidence/ga-0.1.0.json"
+      - "release/ga-policy-0.2.0.json"
+      - "release/evidence/ga-0.2.0.json"
       - "docs/09-release/ga-*.md"
+      - "docs/09-release/general-availability-0.2.0.md"
       - ".github/workflows/ga-approval.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/publish-v0.2.0-tag.yml"
+      - ".github/workflows/verify-v0.2.0-publication.yml"
       - ".github/workflows/service-mode.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: service-mode-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   postgres-jetstream:

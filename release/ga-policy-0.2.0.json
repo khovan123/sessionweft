@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "product": "SessionWeft",
+  "release": "0.2.0",
+  "slo": {
+    "monthly_availability_percent": 99.9,
+    "api_read_p95_ms": 250,
+    "api_mutation_p95_ms": 500,
+    "event_delivery_p95_ms": 2000,
+    "scheduler_claim_p95_ms": 2000
+  },
+  "recovery": {
+    "service_rto_minutes": 30,
+    "service_rpo_minutes": 5,
+    "local_committed_state_rpo_seconds": 0
+  },
+  "capacity": {
+    "concurrent_sessions": 100,
+    "active_agents": 50,
+    "queued_tasks": 10000,
+    "indexed_files_per_workspace": 10000,
+    "event_backlog": 1000000
+  },
+  "required_gates": [
+    "rust_quality",
+    "service_mode_chaos",
+    "client_reconnect",
+    "workspace_capacity",
+    "backup_restore",
+    "migration_compatibility",
+    "security_audit",
+    "secret_leakage",
+    "plugin_isolation",
+    "sbom",
+    "release_artifacts",
+    "observability",
+    "runbooks",
+    "tenant_runtime_isolation",
+    "billing_idempotence",
+    "portable_sandbox_os_matrix",
+    "adapter_certification_activation"
+  ],
+  "required_signoff_roles": [
+    "architecture",
+    "security",
+    "operations"
+  ],
+  "max_open_critical_findings": 0,
+  "max_open_high_findings": 0
+}

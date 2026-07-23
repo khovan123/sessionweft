@@ -1,0 +1,144 @@
+name: verify-v0.2.0-publication
+
+on:
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-v0.2.0-publication
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      github.repository == 'khovan123/sessionweft' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: v0.2.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v0.2.0
+          fetch-depth: 0
+
+      - name: Fetch immutable tag and release metadata
+        run: |
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          mkdir -p /tmp/sessionweft-release
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets,targetCommitish > /tmp/sessionweft-release/release.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          release = json.loads(Path('/tmp/sessionweft-release/release.json').read_text())
+          if release['tagName'] != 'v0.2.0':
+              raise SystemExit('release tag mismatch')
+          if release['isDraft'] or release['isPrerelease']:
+              raise SystemExit('v0.2.0 must be a published stable release')
+          names = {asset['name'] for asset in release['assets']}
+          required = {'sessionweft.cdx.json', 'verified.json', 'activation.json'}
+          missing = required - names
+          if missing:
+              raise SystemExit(f'missing release assets: {sorted(missing)}')
+          runtime = [name for name in names if name.startswith('sessionweft-0.2.0-') and name.endswith('.tar.gz')]
+          runtime_checksums = [name for name in names if name.startswith('sessionweft-0.2.0-') and name.endswith('.tar.gz.sha256')]
+          vscode = [name for name in names if name == 'sessionweft-vscode-0.2.0.tar.gz']
+          vscode_checksums = [name for name in names if name == 'sessionweft-vscode-0.2.0.tar.gz.sha256']
+          certifications = [name for name in names if name.endswith('-1.0.0.json')]
+          if not runtime or len(runtime) != len(runtime_checksums):
+              raise SystemExit(f'incomplete Runtime release assets: {sorted(names)}')
+          if not vscode or not vscode_checksums:
+              raise SystemExit(f'incomplete VS Code release assets: {sorted(names)}')
+          if len(certifications) < 5:
+              raise SystemExit(f'incomplete adapter certification assets: {sorted(certifications)}')
+          PY
+
+      - name: Download and verify checksums
+        working-directory: /tmp/sessionweft-release
+        run: |
+          gh release download "$TAG" --clobber
+          for checksum in *.sha256; do
+            sha256sum -c "$checksum"
+          done
+
+      - name: Verify exact-commit evidence, SBOM and adapter certifications
+        working-directory: /tmp/sessionweft-release
+        run: |
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          tag_commit = subprocess.check_output(
+              ['git', '-C', '${{ github.workspace }}', 'rev-list', '-n', '1', 'v0.2.0'],
+              text=True,
+          ).strip()
+          sbom = json.loads(Path('sessionweft.cdx.json').read_text())
+          if sbom.get('bomFormat') != 'CycloneDX' or sbom.get('specVersion') != '1.6':
+              raise SystemExit('invalid CycloneDX release SBOM')
+          if not sbom.get('components'):
+              raise SystemExit('release SBOM contains no components')
+          evidence = json.loads(Path('verified.json').read_text())
+          if evidence.get('release') != '0.2.0' or evidence.get('commit') != tag_commit:
+              raise SystemExit('0.2.0 evidence does not match immutable tag commit')
+          required_gates = {
+              'tenant_runtime_isolation',
+              'billing_idempotence',
+              'portable_sandbox_os_matrix',
+              'adapter_certification_activation',
+          }
+          if not required_gates.issubset(evidence.get('gates', {})):
+              raise SystemExit('Phase 3 release evidence is incomplete')
+          for gate in required_gates:
+              if evidence['gates'][gate].get('status') != 'passed':
+                  raise SystemExit(f'Phase 3 gate did not pass: {gate}')
+          activation = json.loads(Path('activation.json').read_text())
+          required_runtimes = {'sessionweftd', 'sessionweft-execution-worker', 'sessionweft-saasd'}
+          if activation.get('schema_version') != 1 or not required_runtimes.issubset(activation.get('runtimes', {})):
+              raise SystemExit('adapter activation policy is incomplete')
+          certifications = list(Path('.').glob('*-1.0.0.json'))
+          for path in certifications:
+              certification = json.loads(path.read_text())
+              if certification.get('tested_commit') != tag_commit:
+                  raise SystemExit(f'{path.name} is not bound to the tag commit')
+              if certification.get('approved_for_production') is not True:
+                  raise SystemExit(f'{path.name} is not approved for production')
+          PY
+
+      - name: Verify packaged Runtime activation boundary
+        working-directory: /tmp/sessionweft-release
+        run: |
+          archive="$(find . -maxdepth 1 -name 'sessionweft-0.2.0-*.tar.gz' -print -quit)"
+          mkdir -p unpacked
+          tar -xzf "$archive" -C unpacked
+          root="$(find unpacked -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          tag_commit="$(git -C '${{ github.workspace }}' rev-list -n 1 v0.2.0)"
+          grep -qx 'version=0.2.0' "$root/BUILD-INFO"
+          grep -qx "commit=$tag_commit" "$root/BUILD-INFO"
+          grep -qx 'release_gate=ga' "$root/BUILD-INFO"
+          test -f "$root/config/adapter-activation.json"
+          test -n "$(find "$root/config/adapter-manifests" -name '*.json' -print -quit)"
+          test -n "$(find "$root/config/adapter-certifications" -name '*.json' -print -quit)"
+          (cd "$root" && sha256sum -c MANIFEST.sha256)
+
+      - name: Upload publication verification receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: sessionweft-v0.2.0-publication-verification
+          path: |
+            /tmp/sessionweft-release/release.json
+            /tmp/sessionweft-release/verified.json
+            /tmp/sessionweft-release/sessionweft.cdx.json
+            /tmp/sessionweft-release/activation.json
+            /tmp/sessionweft-release/*-1.0.0.json
+            /tmp/sessionweft-release/*.sha256
+          if-no-files-found: error
+          retention-days: 90

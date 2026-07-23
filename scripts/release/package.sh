@@ -11,10 +11,20 @@ if [[ "$VERSION" == *-rc.* ]]; then
   DEFAULT_POLICY="release/release-policy.json"
   DEFAULT_EVIDENCE="release/evidence/rc-0.1.0.json"
   DEFAULT_LEVEL="rc"
-else
+  GA_DOCUMENT="docs/09-release/general-availability.md"
+elif [[ "$VERSION" == "0.2.0" ]]; then
+  DEFAULT_POLICY="release/ga-policy-0.2.0.json"
+  DEFAULT_EVIDENCE="release/evidence/ga-0.2.0.json"
+  DEFAULT_LEVEL="ga"
+  GA_DOCUMENT="docs/09-release/general-availability-0.2.0.md"
+elif [[ "$VERSION" == "0.1.0" ]]; then
   DEFAULT_POLICY="release/ga-policy-0.1.0.json"
   DEFAULT_EVIDENCE="release/evidence/ga-0.1.0.json"
   DEFAULT_LEVEL="ga"
+  GA_DOCUMENT="docs/09-release/general-availability.md"
+else
+  printf '%s\n' "Unsupported release version: $VERSION" >&2
+  exit 1
 fi
 
 POLICY_PATH="${RELEASE_POLICY_PATH:-$DEFAULT_POLICY}"
@@ -95,7 +105,7 @@ PY
 
 cp README.md PROJECT.md "$PACKAGE_DIR/docs/"
 cp docs/09-release/install-upgrade.md "$PACKAGE_DIR/docs/"
-cp docs/09-release/general-availability.md "$PACKAGE_DIR/docs/"
+cp "$GA_DOCUMENT" "$PACKAGE_DIR/docs/"
 cp docs/10-deployment/disaster-recovery.md "$PACKAGE_DIR/docs/"
 cp docs/10-deployment/alerts-and-runbooks.md "$PACKAGE_DIR/docs/"
 if [[ -f LICENSE ]]; then

@@ -6,17 +6,22 @@ SessionWeft is a session-first, provider-agnostic Runtime for coordinating AI ag
 
 ## Status
 
-SessionWeft `0.1.0` is approved for General Availability within the declared scope:
+SessionWeft `0.2.0` is approved for General Availability on the exact commit that passes every release gate. The GA scope includes:
 
 - SQLite local single-user Runtime mode;
 - authenticated single-tenant service mode using PostgreSQL and NATS JetStream;
+- multi-tenant SaaS Runtime with isolated PostgreSQL schemas, tenant identity, membership, quota and token authority;
+- tenant-scoped Session, Agent, Workflow and Lock APIs with cross-tenant not-found semantics;
+- billing plans, subscriptions, entitlements, usage records and an idempotent Stripe Billing adapter;
 - durable Session, Workflow, Agent, Memory, Lock, Git, Provider, Tool and event state;
 - CLI, Ratatui TUI and VS Code clients as stateless Runtime adapters;
-- Linux production MCP/plugin sandbox using bubblewrap.
+- Linux native plugin isolation using bubblewrap and portable Wasmtime/WASI isolation on Linux, macOS and Windows;
+- exact-commit certification and fail-closed activation for production provider, plugin, deployment and billing adapters.
 
-Release: [`v0.1.0`](../../releases/tag/v0.1.0)
+Release: [`v0.2.0`](../../releases/tag/v0.2.0)  
+Previous release: [`v0.1.0`](../../releases/tag/v0.1.0)
 
-Phase 3 work for multi-tenant SaaS, billing, portable plugin isolation and adapter certification is tracked separately and must pass a new exact-commit release gate before it can expand the GA scope.
+The `v0.2.0` tag is created only after CI, security, production hardening, SaaS Runtime, Phase 3 qualification and GA approval all pass for the same main-branch commit. Publication verification then checks checksums, SBOM, exact-commit evidence and packaged adapter certifications.
 
 ## Requirements
 
@@ -69,6 +74,9 @@ Every mutation requires the expected Session version. A stale version returns HT
 | `SESSIONWEFT_API_TOKEN` | unset | Bearer token; required for non-loopback bind |
 | `SESSIONWEFT_OLLAMA_URL` | `http://127.0.0.1:11434` | Ollama-compatible endpoint |
 | `SESSIONWEFT_ENDPOINT` | `http://127.0.0.1:7447` | CLI Runtime endpoint |
+| `SESSIONWEFT_SAAS_DATABASE_URL` | unset | PostgreSQL authority database for `sessionweft-saasd` |
+| `SESSIONWEFT_SAAS_BOOTSTRAP_TOKEN` | unset | Bootstrap authority token for creating the first tenant |
+| `SESSIONWEFT_REQUIRE_CERTIFIED_ADAPTERS` | release-dependent | Require a packaged exact-commit adapter certification set |
 | `RUST_LOG` | `info` | Structured log filter |
 
 Example authenticated service bind:
@@ -97,15 +105,18 @@ cargo test --workspace --locked
 - State and outbox records commit atomically.
 - Durable delivery is treated as at least once.
 - Provider, CLI and API adapters never access the database directly.
+- Tenant authority is resolved before a tenant Runtime is selected.
 - Tool and plugin execution remain default-deny.
 - Search, memory and vector indexes are rebuildable projections.
+- Production adapters cannot activate without an exact matching certification.
 - Production release evidence is bound to the exact tested commit.
 
 ## Documentation
 
 - [`PROJECT.md`](PROJECT.md): project source of truth and complete roadmap
 - [`docs/00-product/current-status.md`](docs/00-product/current-status.md): current release scope and completed gates
-- [`docs/09-release/general-availability-0.1.0.md`](docs/09-release/general-availability-0.1.0.md): GA decision
+- [`docs/09-release/general-availability-0.2.0.md`](docs/09-release/general-availability-0.2.0.md): 0.2.0 GA decision
+- [`docs/09-release/general-availability.md`](docs/09-release/general-availability.md): 0.1.0 GA decision
 - [`docs/02-architecture/baseline-v1.md`](docs/02-architecture/baseline-v1.md): architecture baseline
 - [`docs/04-adr`](docs/04-adr): accepted decisions
 - [`docs/03-rfc`](docs/03-rfc): implementation contracts
