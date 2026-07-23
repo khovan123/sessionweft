@@ -1,0 +1,94 @@
+name: verify-v0.2.0-publication
+
+on:
+  workflow_run:
+    workflows: ["publish-v0.2.0"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: >-
+      github.repository == 'khovan123/sessionweft' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: v0.2.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v0.2.0
+          fetch-depth: 0
+      - name: Fetch immutable tag and release metadata
+        run: |
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
+          mkdir -p /tmp/sessionweft-release
+          gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets,targetCommitish > /tmp/sessionweft-release/release.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path('/tmp/sessionweft-release/release.json').read_text())
+          if release['tagName'] != 'v0.2.0':
+              raise SystemExit('release tag mismatch')
+          if release['isDraft'] or release['isPrerelease']:
+              raise SystemExit('v0.2.0 must be a published stable release')
+          names = {asset['name'] for asset in release['assets']}
+          required = {'sessionweft.cdx.json', 'ga-verified-0.2.0.json'}
+          missing = required - names
+          if missing:
+              raise SystemExit(f'missing release assets: {sorted(missing)}')
+          runtime = [n for n in names if n.startswith('sessionweft-0.2.0-') and n.endswith('.tar.gz')]
+          runtime_sums = [n for n in names if n.startswith('sessionweft-0.2.0-') and n.endswith('.tar.gz.sha256')]
+          vscode = [n for n in names if n == 'sessionweft-vscode-0.2.0.tar.gz']
+          vscode_sums = [n for n in names if n == 'sessionweft-vscode-0.2.0.tar.gz.sha256']
+          certifications = [n for n in names if n.endswith('.json') and n not in required and n != 'sessionweft.cdx.json']
+          if not runtime or len(runtime) != len(runtime_sums) or not vscode or not vscode_sums or not certifications:
+              raise SystemExit(f'incomplete v0.2.0 asset set: {sorted(names)}')
+          PY
+      - name: Download and verify release assets
+        working-directory: /tmp/sessionweft-release
+        run: |
+          gh release download "$TAG" --clobber
+          for checksum in *.sha256; do
+            sha256sum -c "$checksum"
+          done
+          python3 - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+          sbom = json.loads(Path('sessionweft.cdx.json').read_text())
+          if sbom.get('bomFormat') != 'CycloneDX' or sbom.get('specVersion') != '1.6' or not sbom.get('components'):
+              raise SystemExit('invalid or empty CycloneDX release SBOM')
+          evidence = json.loads(Path('ga-verified-0.2.0.json').read_text())
+          tag_commit = subprocess.check_output(
+              ['git', '-C', '${{ github.workspace }}', 'rev-list', '-n', '1', 'v0.2.0'],
+              text=True,
+          ).strip()
+          if evidence.get('release') != '0.2.0' or evidence.get('commit') != tag_commit:
+              raise SystemExit('GA evidence does not match v0.2.0 exact commit')
+          required_gates = {'tenant_isolation', 'billing_idempotence', 'portable_sandbox', 'adapter_certification'}
+          for gate in required_gates:
+              if evidence.get('gates', {}).get(gate, {}).get('status') != 'passed':
+                  raise SystemExit(f'missing passed Phase 3 gate: {gate}')
+          signoffs = {item['role']: item for item in evidence.get('signoffs', [])}
+          for role in ('architecture', 'security', 'operations'):
+              item = signoffs.get(role)
+              if not item or item.get('decision') != 'approved_for_ga' or item.get('human') is not True:
+                  raise SystemExit(f'missing human GA sign-off for {role}')
+          PY
+      - name: Upload publication verification receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: sessionweft-v0.2.0-publication-verification
+          path: |
+            /tmp/sessionweft-release/release.json
+            /tmp/sessionweft-release/ga-verified-0.2.0.json
+            /tmp/sessionweft-release/sessionweft.cdx.json
+            /tmp/sessionweft-release/*.sha256
+          if-no-files-found: error
+          retention-days: 90
