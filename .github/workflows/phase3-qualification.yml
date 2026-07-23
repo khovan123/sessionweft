@@ -12,6 +12,9 @@ on:
       - "crates/sessionweft-billing-stripe/**"
       - "crates/sessionweft-saas-postgres/**"
       - "release/adapters/**"
+      - "release/ga-policy-0.2.0.json"
+      - "release/evidence/ga-0.2.0.json"
+      - "release/publication/v0.2.0.json"
       - "scripts/release/materialize-adapter-certifications.py"
       - ".github/workflows/phase3-qualification.yml"
   push:
@@ -26,6 +29,9 @@ on:
       - "crates/sessionweft-billing-stripe/**"
       - "crates/sessionweft-saas-postgres/**"
       - "release/adapters/**"
+      - "release/ga-policy-0.2.0.json"
+      - "release/evidence/ga-0.2.0.json"
+      - "release/publication/v0.2.0.json"
       - "scripts/release/materialize-adapter-certifications.py"
       - ".github/workflows/phase3-qualification.yml"
   workflow_dispatch:
