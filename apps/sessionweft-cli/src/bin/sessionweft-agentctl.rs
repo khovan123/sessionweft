@@ -2,6 +2,7 @@
 #[path = "support/session_cli_display.rs"]
 mod session_cli_display;
 
+#[allow(clippy::items_after_test_module)]
 mod legacy {
     include!("support/sessionweft_agentctl_legacy.rs");
 
