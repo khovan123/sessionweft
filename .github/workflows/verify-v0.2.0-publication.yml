@@ -142,6 +142,7 @@ jobs:
           test -n "$(find "$root/config/adapter-certifications" -name '*.json' -print -quit)"
           python3 - "$root" <<'PY'
           import hashlib
+          import string
           import sys
           from pathlib import Path, PurePosixPath
 
@@ -153,21 +154,32 @@ jobs:
 
           legacy_prefix = PurePosixPath('dist') / root.name
           checked = 0
+          legacy_self_entries = 0
           for line in lines:
               try:
                   digest, recorded = line.split(maxsplit=1)
               except ValueError as error:
                   raise SystemExit(f'invalid package manifest line: {line!r}') from error
+              if len(digest) != 64 or any(character not in string.hexdigits for character in digest):
+                  raise SystemExit(f'invalid package manifest digest: {digest!r}')
               recorded = recorded.lstrip('*')
               path = PurePosixPath(recorded)
               if path.is_absolute() or '..' in path.parts:
                   raise SystemExit(f'unsafe package manifest path: {recorded}')
-              if path.parts[:2] == legacy_prefix.parts:
+              legacy_path = path.parts[:2] == legacy_prefix.parts
+              if legacy_path:
                   path = PurePosixPath(*path.parts[2:])
               elif path.parts and path.parts[0] == '.':
                   path = PurePosixPath(*path.parts[1:])
-              if not path.parts or path.name == 'MANIFEST.sha256':
+              if not path.parts:
                   raise SystemExit(f'invalid package manifest target: {recorded}')
+              if path == PurePosixPath('MANIFEST.sha256'):
+                  if not legacy_path:
+                      raise SystemExit('new package manifests must not contain a self-reference')
+                  legacy_self_entries += 1
+                  if legacy_self_entries > 1:
+                      raise SystemExit('legacy package manifest contains multiple self-references')
+                  continue
               target = (root / Path(*path.parts)).resolve()
               if root not in target.parents or not target.is_file():
                   raise SystemExit(f'package manifest target is missing or escapes archive: {recorded}')
@@ -177,7 +189,12 @@ jobs:
                       f'package manifest digest mismatch for {recorded}: expected {digest}, got {actual}'
                   )
               checked += 1
-          print(f'verified {checked} packaged Runtime manifest entries')
+          if checked == 0:
+              raise SystemExit('package manifest verified no archive contents')
+          print(
+              f'verified {checked} packaged Runtime manifest entries; '
+              f'legacy self-references={legacy_self_entries}'
+          )
           PY
 
       - name: Upload publication verification receipt
