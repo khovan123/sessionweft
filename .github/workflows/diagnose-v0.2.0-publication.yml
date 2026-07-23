@@ -1,5 +1,5 @@
 name: diagnose-v0.2.0-publication
-# refresh after v0.1.0 repair merge
+# refresh after v0.2.0 tag creation
 
 on:
   pull_request:
