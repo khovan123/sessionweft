@@ -1,5 +1,5 @@
 name: diagnose-v0.2.0-publication
-# inspect verifier created by merge of PR #82
+# inspect immutable v0.2.0 Runtime archive boundary
 
 on:
   pull_request:
@@ -13,27 +13,80 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Capture final v0.2.0 verification state
+      - uses: actions/checkout@v4
+        with:
+          ref: v0.2.0
+          fetch-depth: 0
+
+      - name: Inspect immutable Runtime package
         run: |
           set -euo pipefail
-          mkdir -p diagnostics
-          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/verify-v0.2.0-publication.yml/runs?per_page=20" \
-            > diagnostics/verify-runs.json
-          jq '[.workflow_runs[] | {id, name, status, conclusion, run_number, event, head_sha, head_branch, html_url}]' \
-            diagnostics/verify-runs.json > diagnostics/verify-run-summary.json
-          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs?per_page=20" \
-            > diagnostics/release-runs.json
-          jq '[.workflow_runs[] | {id, name, status, conclusion, run_number, event, head_sha, head_branch, html_url}]' \
-            diagnostics/release-runs.json > diagnostics/release-run-summary.json
-          gh release view v0.2.0 --repo "$GITHUB_REPOSITORY" \
-            --json tagName,isDraft,isPrerelease,targetCommitish,assets \
-            > diagnostics/v0.2.0-release.json
-          cat diagnostics/release-run-summary.json
-          cat diagnostics/verify-run-summary.json
+          mkdir -p diagnostics/download diagnostics/unpacked
+          cd diagnostics/download
+          gh release download v0.2.0 --repo "$GITHUB_REPOSITORY" \
+            --pattern 'sessionweft-0.2.0-*.tar.gz' --clobber
+          archive="$(find . -maxdepth 1 -name 'sessionweft-0.2.0-*.tar.gz' -print -quit)"
+          tar -xzf "$archive" -C ../unpacked
+          root="$(find ../unpacked -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          cp "$root/BUILD-INFO" ../BUILD-INFO
+          cp "$root/MANIFEST.sha256" ../MANIFEST.sha256
+          find "$root" -type f | sed "s#^$root/##" | sort > ../archive-files.txt
+
+          set +e
+          python3 - "$root" > ../validator.log 2>&1 <<'PY'
+          import hashlib
+          import sys
+          from pathlib import Path, PurePosixPath
+
+          root = Path(sys.argv[1]).resolve()
+          print(f'root={root}')
+          manifest = root / 'MANIFEST.sha256'
+          lines = [line for line in manifest.read_text(encoding='utf-8').splitlines() if line.strip()]
+          print(f'manifest_entries={len(lines)}')
+          if not lines:
+              raise SystemExit('package manifest contains no entries')
+
+          legacy_prefix = PurePosixPath('dist') / root.name
+          print(f'legacy_prefix={legacy_prefix}')
+          checked = 0
+          for index, line in enumerate(lines, start=1):
+              try:
+                  digest, recorded = line.split(maxsplit=1)
+              except ValueError as error:
+                  raise SystemExit(f'invalid package manifest line {index}: {line!r}') from error
+              recorded = recorded.lstrip('*')
+              path = PurePosixPath(recorded)
+              if path.is_absolute() or '..' in path.parts:
+                  raise SystemExit(f'unsafe package manifest path at line {index}: {recorded}')
+              if path.parts[:2] == legacy_prefix.parts:
+                  path = PurePosixPath(*path.parts[2:])
+              elif path.parts and path.parts[0] == '.':
+                  path = PurePosixPath(*path.parts[1:])
+              if not path.parts or path.name == 'MANIFEST.sha256':
+                  raise SystemExit(f'invalid package manifest target at line {index}: {recorded}')
+              target = (root / Path(*path.parts)).resolve()
+              if root not in target.parents or not target.is_file():
+                  raise SystemExit(
+                      f'package manifest target is missing or escapes archive at line {index}: '
+                      f'{recorded} -> {target}'
+                  )
+              actual = hashlib.sha256(target.read_bytes()).hexdigest()
+              if actual != digest:
+                  raise SystemExit(
+                      f'package manifest digest mismatch at line {index} for {recorded}: '
+                      f'expected {digest}, got {actual}'
+                  )
+              checked += 1
+          print(f'verified={checked}')
+          PY
+          status=$?
+          set -e
+          printf '%s\n' "$status" > ../validator-status.txt
+          cat ../validator.log
 
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
