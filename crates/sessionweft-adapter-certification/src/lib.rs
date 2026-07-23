@@ -115,9 +115,7 @@ impl VerifiedCertificationSet {
             let certification_path = certifications_directory
                 .join(format!("{}-{}.json", manifest.adapter_id, manifest.version));
             if !certification_path.exists() {
-                return Err(CertificationError::MissingCertification(
-                    certification_path,
-                ));
+                return Err(CertificationError::MissingCertification(certification_path));
             }
             let certification = load_certification(&certification_path)?;
             let report = evaluate(&manifest, &certification, repository_root);
@@ -500,13 +498,8 @@ mod tests {
         )
         .expect("certification file");
 
-        let set = VerifiedCertificationSet::load(
-            &manifests,
-            &certifications,
-            root.path(),
-            commit,
-        )
-        .expect("verified set");
+        let set = VerifiedCertificationSet::load(&manifests, &certifications, root.path(), commit)
+            .expect("verified set");
         assert!(set.contains("echo-provider", "1.0.0", AdapterKind::Provider));
         assert!(
             set.require("echo-provider", "1.0.0", AdapterKind::Billing)
