@@ -70,16 +70,12 @@ fn load_compiled_certifications() -> Result<Option<VerifiedCertificationSet>, St
         .unwrap_or_else(|| package_root.join("config/adapter-certifications"));
     let activation_path = env_path("SESSIONWEFT_ADAPTER_ACTIVATION_FILE")
         .unwrap_or_else(|| package_root.join("config/adapter-activation.json"));
-    let repository_root = env_path("SESSIONWEFT_ADAPTER_SOURCE_ROOT")
-        .unwrap_or_else(|| package_root.to_path_buf());
+    let repository_root =
+        env_path("SESSIONWEFT_ADAPTER_SOURCE_ROOT").unwrap_or_else(|| package_root.to_path_buf());
 
-    let set = VerifiedCertificationSet::load(
-        manifests,
-        certifications,
-        repository_root,
-        build_commit,
-    )
-    .map_err(|error| error.to_string())?;
+    let set =
+        VerifiedCertificationSet::load(manifests, certifications, repository_root, build_commit)
+            .map_err(|error| error.to_string())?;
     verify_runtime_activation(&set, &activation_path, executable_name)?;
     Ok(Some(set))
 }
@@ -95,12 +91,13 @@ fn verify_runtime_activation(
             activation_path.display()
         )
     })?;
-    let activation: RuntimeActivationManifest = serde_json::from_slice(&bytes).map_err(|error| {
-        format!(
-            "parse adapter activation file '{}': {error}",
-            activation_path.display()
-        )
-    })?;
+    let activation: RuntimeActivationManifest =
+        serde_json::from_slice(&bytes).map_err(|error| {
+            format!(
+                "parse adapter activation file '{}': {error}",
+                activation_path.display()
+            )
+        })?;
     if activation.schema_version != 1 {
         return Err(format!(
             "unsupported adapter activation schema version {}",
@@ -108,9 +105,7 @@ fn verify_runtime_activation(
         ));
     }
     let adapters = activation.runtimes.get(executable_name).ok_or_else(|| {
-        format!(
-            "adapter activation file has no entry for Runtime binary '{executable_name}'"
-        )
+        format!("adapter activation file has no entry for Runtime binary '{executable_name}'")
     })?;
     if adapters.is_empty() {
         return Err(format!(
