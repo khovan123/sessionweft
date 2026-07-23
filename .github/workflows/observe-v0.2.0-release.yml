@@ -1,0 +1,179 @@
+name: observe-v0.2.0-release
+
+on:
+  push:
+    branches: [ops/v0.2.0-release-observer]
+    paths:
+      - ".github/workflows/observe-v0.2.0-release.yml"
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: observe-v0.2.0-release
+  cancel-in-progress: true
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_COMMIT: 3aaa1d2da272edee4f9c01fa36e9f6a5237a36cf
+      TAG: v0.2.0
+      ISSUE: "66"
+    steps:
+      - name: Wait for exact main-commit gates
+        run: |
+          for attempt in $(seq 1 90); do
+            main_commit="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
+            if [[ "$main_commit" != "$TARGET_COMMIT" ]]; then
+              gh issue comment "$ISSUE" --body "v0.2.0 publication observer stopped: main moved from exact tested commit \`$TARGET_COMMIT\` to \`$main_commit\`. Issue remains open."
+              exit 1
+            fi
+
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_COMMIT}&per_page=100" > /tmp/runs.json
+            if python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          required = {
+              "ci",
+              "security-supply-chain",
+              "service-mode",
+              "production-hardening",
+              "saas-runtime",
+              "phase3-qualification",
+              "ga-approval",
+          }
+          runs = json.loads(Path('/tmp/runs.json').read_text())['workflow_runs']
+          latest = {}
+          for run in runs:
+              name = run['name']
+              if name not in required:
+                  continue
+              current = latest.get(name)
+              if current is None or run['run_number'] > current['run_number']:
+                  latest[name] = run
+          missing = required - latest.keys()
+          failed = {
+              name: run.get('conclusion')
+              for name, run in latest.items()
+              if run.get('status') == 'completed' and run.get('conclusion') != 'success'
+          }
+          pending = {
+              name: run.get('status')
+              for name, run in latest.items()
+              if run.get('status') != 'completed'
+          }
+          if failed:
+              print(json.dumps({'failed': failed}, sort_keys=True))
+              raise SystemExit(1)
+          if missing or pending:
+              print(json.dumps({'missing': sorted(missing), 'pending': pending}, sort_keys=True))
+              raise SystemExit(75)
+          print('all exact main-commit gates passed')
+          PY
+            then
+              break
+            else
+              status=$?
+              if [[ "$status" -eq 1 ]]; then
+                summary="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          required = {'ci','security-supply-chain','service-mode','production-hardening','saas-runtime','phase3-qualification','ga-approval'}
+          runs = json.loads(Path('/tmp/runs.json').read_text())['workflow_runs']
+          latest = {}
+          for run in runs:
+              if run['name'] in required and (run['name'] not in latest or run['run_number'] > latest[run['name']]['run_number']):
+                  latest[run['name']] = run
+          print(', '.join(f"{name}={run.get('conclusion')}" for name, run in sorted(latest.items())))
+          PY
+          )"
+                gh issue comment "$ISSUE" --body "v0.2.0 exact-commit release gate failed for \`$TARGET_COMMIT\`: $summary. Issue remains open."
+                exit 1
+              fi
+              sleep 20
+            fi
+            if [[ "$attempt" -eq 90 ]]; then
+              gh issue comment "$ISSUE" --body "v0.2.0 exact-commit gates did not finish for \`$TARGET_COMMIT\` before the observer timeout. Issue remains open."
+              exit 1
+            fi
+          done
+
+      - name: Wait for tag, release and publication receipt
+        run: |
+          for attempt in $(seq 1 90); do
+            tag_commit="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq .object.sha 2>/dev/null || true)"
+            if [[ -n "$tag_commit" && "$tag_commit" != "$TARGET_COMMIT" ]]; then
+              gh issue comment "$ISSUE" --body "v0.2.0 tag mismatch: \`$TAG\` points to \`$tag_commit\`, expected \`$TARGET_COMMIT\`. Issue remains open."
+              exit 1
+            fi
+
+            release_ready=false
+            if gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets > /tmp/release.json 2>/dev/null; then
+              if python3 - <<'PY'
+          import json
+          from pathlib import Path
+          release = json.loads(Path('/tmp/release.json').read_text())
+          names = {asset['name'] for asset in release['assets']}
+          required = {'sessionweft.cdx.json', 'verified.json', 'activation.json', 'sessionweft-vscode-0.2.0.tar.gz', 'sessionweft-vscode-0.2.0.tar.gz.sha256'}
+          runtime = [name for name in names if name.startswith('sessionweft-0.2.0-') and name.endswith('.tar.gz')]
+          runtime_sha = [name for name in names if name.startswith('sessionweft-0.2.0-') and name.endswith('.tar.gz.sha256')]
+          certs = [name for name in names if name.endswith('-1.0.0.json')]
+          ok = (
+              release['tagName'] == 'v0.2.0'
+              and not release['isDraft']
+              and not release['isPrerelease']
+              and required.issubset(names)
+              and bool(runtime)
+              and len(runtime) == len(runtime_sha)
+              and len(certs) >= 5
+          )
+          raise SystemExit(0 if ok else 75)
+          PY
+              then
+                release_ready=true
+              fi
+            fi
+
+            gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_COMMIT}&per_page=100" > /tmp/tag-runs.json
+            verify_state="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          runs = json.loads(Path('/tmp/tag-runs.json').read_text())['workflow_runs']
+          matches = [run for run in runs if run['name'] == 'verify-v0.2.0-publication']
+          if not matches:
+              print('missing')
+          else:
+              run = max(matches, key=lambda item: item['run_number'])
+              if run['status'] != 'completed':
+                  print('pending')
+              else:
+                  print(run.get('conclusion') or 'unknown')
+          PY
+          )"
+
+            if [[ "$verify_state" == "failure" || "$verify_state" == "cancelled" || "$verify_state" == "timed_out" ]]; then
+              gh issue comment "$ISSUE" --body "v0.2.0 publication verification ended with \`$verify_state\` for \`$TARGET_COMMIT\`. Issue remains open."
+              exit 1
+            fi
+
+            if [[ "$tag_commit" == "$TARGET_COMMIT" && "$release_ready" == "true" && "$verify_state" == "success" ]]; then
+              break
+            fi
+
+            sleep 20
+            if [[ "$attempt" -eq 90 ]]; then
+              gh issue comment "$ISSUE" --body "v0.2.0 tag/release/publication verification did not complete before the observer timeout. tag=\`${tag_commit:-missing}\`, release_ready=\`$release_ready\`, verification=\`$verify_state\`. Issue remains open."
+              exit 1
+            fi
+          done
+
+      - name: Record completion and close Phase 3
+        run: |
+          gh issue comment "$ISSUE" --body "## SessionWeft 0.2.0 completed\n\n- PR #71 merged: tenant-isolated Runtime and SaaS API\n- PR #73 merged: exact-commit certified adapter activation\n- PR #74 merged: 0.2.0 GA policy, evidence and publication chain\n- Exact release commit: \`$TARGET_COMMIT\`\n- Tag and stable release: \`$TAG\`\n- Required main-commit gates: passed\n- Release assets, checksums, CycloneDX SBOM, exact-commit evidence and adapter certifications: verified\n- Publication verification workflow: passed\n\nPhase 3 exit criteria are satisfied."
+          gh issue close "$ISSUE" --reason completed
