@@ -51,7 +51,7 @@ jobs:
       - name: Check whether repair is required
         id: release
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "missing=false" >> "$GITHUB_OUTPUT"
           else
             echo "missing=true" >> "$GITHUB_OUTPUT"
@@ -104,14 +104,22 @@ jobs:
       - name: Publish missing GitHub Release
         if: steps.release.outputs.missing == 'true'
         run: |
+          cat > /tmp/sessionweft-v0.1.0-release-notes.md <<'EOF'
+          # SessionWeft 0.1.0
+
+          General Availability release for the declared SessionWeft 0.1.0 scope.
+
+          This immutable release contains checksummed Runtime and VS Code archives, a CycloneDX SBOM, exact-commit GA evidence, and GitHub artifact attestations. The release is reconstructed only from the existing immutable `v0.1.0` tag; the tag is never moved.
+          EOF
           gh release create "$TAG" \
             dist/*.tar.gz \
             dist/*.sha256 \
             dist/sessionweft.cdx.json \
             release/evidence/ga-verified.json \
+            --repo "$GITHUB_REPOSITORY" \
             --verify-tag \
             --title "SessionWeft $VERSION" \
-            --notes-file docs/09-release/general-availability-0.1.0.md
+            --notes-file /tmp/sessionweft-v0.1.0-release-notes.md
 
       - name: Confirm release exists
-        run: gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets
+        run: gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft,isPrerelease,assets
