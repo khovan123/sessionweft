@@ -26,6 +26,27 @@ jobs:
       TARGET_COMMIT: ${{ github.event.workflow_run.head_sha }}
       TAG: v0.2.0
     steps:
+      - name: Require verified v0.1.0 publication
+        run: |
+          gh release view v0.1.0 --json tagName,isDraft,isPrerelease,assets > /tmp/v0.1.0-release.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          release = json.loads(Path('/tmp/v0.1.0-release.json').read_text())
+          if release['tagName'] != 'v0.1.0' or release['isDraft'] or release['isPrerelease']:
+              raise SystemExit('v0.1.0 is not a published stable release')
+          names = {asset['name'] for asset in release['assets']}
+          required = {'sessionweft.cdx.json', 'ga-verified.json'}
+          if not required.issubset(names):
+              raise SystemExit(f'v0.1.0 publication assets are incomplete: {sorted(names)}')
+          runtime = [name for name in names if name.startswith('sessionweft-0.1.0-') and name.endswith('.tar.gz')]
+          runtime_sha = [name for name in names if name.startswith('sessionweft-0.1.0-') and name.endswith('.tar.gz.sha256')]
+          vscode = {'sessionweft-vscode-0.1.0.tar.gz', 'sessionweft-vscode-0.1.0.tar.gz.sha256'}
+          if not runtime or len(runtime) != len(runtime_sha) or not vscode.issubset(names):
+              raise SystemExit(f'v0.1.0 archive assets are incomplete: {sorted(names)}')
+          PY
+
       - name: Require every exact-commit release gate
         run: |
           for attempt in $(seq 1 60); do
