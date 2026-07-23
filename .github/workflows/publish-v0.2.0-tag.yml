@@ -38,6 +38,7 @@ jobs:
           required = {
               "ci",
               "security-supply-chain",
+              "service-mode",
               "production-hardening",
               "saas-runtime",
               "phase3-qualification",
