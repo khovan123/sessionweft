@@ -1,6 +1,10 @@
 name: verify-v0.2.0-publication
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/verify-v0.2.0-publication.yml"
   workflow_run:
     workflows: ["release"]
     types: [completed]
@@ -17,7 +21,11 @@ jobs:
   verify:
     if: >-
       github.repository == 'khovan123/sessionweft' &&
-      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+      (
+        github.event_name == 'workflow_dispatch' ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
@@ -33,7 +41,9 @@ jobs:
         run: |
           git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
           mkdir -p /tmp/sessionweft-release
-          gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets,targetCommitish > /tmp/sessionweft-release/release.json
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,isPrerelease,assets,targetCommitish \
+            > /tmp/sessionweft-release/release.json
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -64,9 +74,12 @@ jobs:
       - name: Download and verify checksums
         working-directory: /tmp/sessionweft-release
         run: |
-          gh release download "$TAG" --clobber
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --clobber
           for checksum in *.sha256; do
-            sha256sum -c "$checksum"
+            read -r digest recorded_path < "$checksum"
+            target="$(basename "$recorded_path")"
+            test -f "$target"
+            printf '%s  %s\n' "$digest" "$target" | sha256sum -c -
           done
 
       - name: Verify exact-commit evidence, SBOM and adapter certifications
