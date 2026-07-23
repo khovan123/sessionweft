@@ -7,7 +7,7 @@ on:
       - "release/publication/v0.2.0.json"
       - ".github/workflows/publish-v0.2.0-tag.yml"
   workflow_run:
-    workflows: ["ga-approval"]
+    workflows: ["ga-approval", "repair-v0.1.0-publication"]
     types: [completed]
   workflow_dispatch:
 
@@ -79,7 +79,8 @@ jobs:
 
       - name: Require verified v0.1.0 publication
         run: |
-          gh release view v0.1.0 --json tagName,isDraft,isPrerelease,assets > /tmp/v0.1.0-release.json
+          gh release view v0.1.0 --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,isPrerelease,assets > /tmp/v0.1.0-release.json
           python3 - <<'PY'
           import json
           from pathlib import Path
