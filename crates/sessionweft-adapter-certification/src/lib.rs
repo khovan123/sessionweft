@@ -1,4 +1,8 @@
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{
+    collections::BTreeSet,
+    fs,
+    path::{Path, PathBuf},
+};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -63,6 +67,134 @@ pub struct CertificationReport {
     pub passed: bool,
     pub adapter_id: String,
     pub blockers: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct CertifiedAdapter {
+    pub adapter_id: String,
+    pub version: String,
+    pub kind: AdapterKind,
+}
+
+#[derive(Debug, Clone)]
+pub struct VerifiedCertificationSet {
+    tested_commit: String,
+    adapters: BTreeSet<CertifiedAdapter>,
+}
+
+impl VerifiedCertificationSet {
+    pub fn load(
+        manifests_directory: impl AsRef<Path>,
+        certifications_directory: impl AsRef<Path>,
+        repository_root: impl AsRef<Path>,
+        build_commit: &str,
+    ) -> Result<Self, CertificationError> {
+        let build_commit = build_commit.trim().to_ascii_lowercase();
+        if !is_full_commit_id(&build_commit) {
+            return Err(CertificationError::InvalidBuildCommit(build_commit));
+        }
+
+        let manifests_directory = manifests_directory.as_ref();
+        let certifications_directory = certifications_directory.as_ref();
+        let repository_root = repository_root.as_ref();
+        let mut entries = fs::read_dir(manifests_directory)
+            .map_err(CertificationError::Io)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CertificationError::Io)?;
+        entries.sort_by_key(|entry| entry.file_name());
+
+        let mut adapters = BTreeSet::new();
+        let mut manifest_count = 0_u64;
+        for entry in entries {
+            let manifest_path = entry.path();
+            if manifest_path.extension().and_then(|value| value.to_str()) != Some("json") {
+                continue;
+            }
+            manifest_count += 1;
+            let manifest = load_manifest(&manifest_path)?;
+            let certification_path = certifications_directory
+                .join(format!("{}-{}.json", manifest.adapter_id, manifest.version));
+            if !certification_path.exists() {
+                return Err(CertificationError::MissingCertification(
+                    certification_path,
+                ));
+            }
+            let certification = load_certification(&certification_path)?;
+            let report = evaluate(&manifest, &certification, repository_root);
+            if !report.passed {
+                return Err(CertificationError::Rejected {
+                    adapter_id: report.adapter_id,
+                    blockers: report.blockers.join("; "),
+                });
+            }
+            let tested_commit = certification.tested_commit.to_ascii_lowercase();
+            if tested_commit != build_commit {
+                return Err(CertificationError::CommitMismatch {
+                    adapter_id: manifest.adapter_id,
+                    certified_commit: certification.tested_commit,
+                    build_commit: build_commit.clone(),
+                });
+            }
+            let adapter = CertifiedAdapter {
+                adapter_id: manifest.adapter_id,
+                version: manifest.version,
+                kind: manifest.kind,
+            };
+            if !adapters.insert(adapter.clone()) {
+                return Err(CertificationError::DuplicateAdapter {
+                    adapter_id: adapter.adapter_id,
+                    version: adapter.version,
+                    kind: adapter.kind,
+                });
+            }
+        }
+        if manifest_count == 0 {
+            return Err(CertificationError::NoManifests(
+                manifests_directory.to_path_buf(),
+            ));
+        }
+
+        Ok(Self {
+            tested_commit: build_commit,
+            adapters,
+        })
+    }
+
+    #[must_use]
+    pub fn tested_commit(&self) -> &str {
+        &self.tested_commit
+    }
+
+    #[must_use]
+    pub fn contains(&self, adapter_id: &str, version: &str, kind: AdapterKind) -> bool {
+        self.adapters.contains(&CertifiedAdapter {
+            adapter_id: adapter_id.to_owned(),
+            version: version.to_owned(),
+            kind,
+        })
+    }
+
+    pub fn require(
+        &self,
+        adapter_id: &str,
+        version: &str,
+        kind: AdapterKind,
+    ) -> Result<(), CertificationError> {
+        if self.contains(adapter_id, version, kind) {
+            Ok(())
+        } else {
+            Err(CertificationError::AdapterNotCertified {
+                adapter_id: adapter_id.to_owned(),
+                version: version.to_owned(),
+                kind,
+                build_commit: self.tested_commit.clone(),
+            })
+        }
+    }
+
+    pub fn adapters(&self) -> impl Iterator<Item = &CertifiedAdapter> {
+        self.adapters.iter()
+    }
 }
 
 pub fn load_manifest(path: impl AsRef<Path>) -> Result<AdapterManifest, CertificationError> {
@@ -220,6 +352,10 @@ fn is_commit_id(value: &str) -> bool {
     (7..=64).contains(&value.len()) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
+fn is_full_commit_id(value: &str) -> bool {
+    matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
+}
+
 fn is_safe_relative_path(value: &str) -> bool {
     let path = Path::new(value);
     !value.trim().is_empty()
@@ -235,6 +371,40 @@ pub enum CertificationError {
     Io(#[from] std::io::Error),
     #[error("adapter certification JSON is invalid: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("adapter manifest directory contains no JSON manifests: {0}")]
+    NoManifests(PathBuf),
+    #[error("adapter certification file is missing: {0}")]
+    MissingCertification(PathBuf),
+    #[error("adapter certification rejected for {adapter_id}: {blockers}")]
+    Rejected {
+        adapter_id: String,
+        blockers: String,
+    },
+    #[error("Runtime build commit must be a full 40 or 64 character hexadecimal object ID: {0}")]
+    InvalidBuildCommit(String),
+    #[error(
+        "adapter {adapter_id} was certified for commit {certified_commit}, not Runtime build {build_commit}"
+    )]
+    CommitMismatch {
+        adapter_id: String,
+        certified_commit: String,
+        build_commit: String,
+    },
+    #[error("duplicate certified adapter {adapter_id}@{version} ({kind:?})")]
+    DuplicateAdapter {
+        adapter_id: String,
+        version: String,
+        kind: AdapterKind,
+    },
+    #[error(
+        "adapter {adapter_id}@{version} ({kind:?}) is not certified for Runtime build {build_commit}"
+    )]
+    AdapterNotCertified {
+        adapter_id: String,
+        version: String,
+        kind: AdapterKind,
+        build_commit: String,
+    },
 }
 
 #[cfg(test)]
@@ -258,15 +428,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn production_certification_requires_exact_digest_commit_and_gates() {
-        let manifest = manifest();
-        let certification = AdapterCertification {
+    fn certification(manifest: &AdapterManifest, commit: &str) -> AdapterCertification {
+        AdapterCertification {
             schema_version: 1,
             adapter_id: manifest.adapter_id.clone(),
             adapter_version: manifest.version.clone(),
-            manifest_sha256: manifest_digest(&manifest),
-            tested_commit: "0123456789abcdef".into(),
+            manifest_sha256: manifest_digest(manifest),
+            tested_commit: commit.into(),
             reviewed_at: Utc::now(),
             reviewer: "release-gate".into(),
             approved_for_production: true,
@@ -282,7 +450,13 @@ mod tests {
                     evidence: vec!["cargo audit".into()],
                 },
             ],
-        };
+        }
+    }
+
+    #[test]
+    fn production_certification_requires_exact_digest_commit_and_gates() {
+        let manifest = manifest();
+        let certification = certification(&manifest, "0123456789abcdef");
         assert!(evaluate(&manifest, &certification, Path::new(".")).passed);
     }
 
@@ -301,5 +475,78 @@ mod tests {
             gates: Vec::new(),
         };
         assert!(!evaluate(&manifest, &certification, Path::new(".")).passed);
+    }
+
+    #[test]
+    fn verified_set_is_bound_to_full_build_commit_and_exact_adapter_kind() {
+        let root = tempfile::tempdir().expect("root");
+        let manifests = root.path().join("manifests");
+        let certifications = root.path().join("verified");
+        fs::create_dir_all(&manifests).expect("manifest directory");
+        fs::create_dir_all(&certifications).expect("certification directory");
+        fs::write(root.path().join("Cargo.toml"), "[workspace]\n").expect("source path");
+
+        let manifest = manifest();
+        let commit = "0123456789abcdef0123456789abcdef01234567";
+        fs::write(
+            manifests.join("echo-provider.json"),
+            serde_json::to_vec_pretty(&manifest).expect("manifest JSON"),
+        )
+        .expect("manifest file");
+        fs::write(
+            certifications.join("echo-provider-1.0.0.json"),
+            serde_json::to_vec_pretty(&certification(&manifest, commit))
+                .expect("certification JSON"),
+        )
+        .expect("certification file");
+
+        let set = VerifiedCertificationSet::load(
+            &manifests,
+            &certifications,
+            root.path(),
+            commit,
+        )
+        .expect("verified set");
+        assert!(set.contains("echo-provider", "1.0.0", AdapterKind::Provider));
+        assert!(
+            set.require("echo-provider", "1.0.0", AdapterKind::Billing)
+                .is_err()
+        );
+        assert_eq!(set.tested_commit(), commit);
+    }
+
+    #[test]
+    fn verified_set_rejects_certification_for_another_commit() {
+        let root = tempfile::tempdir().expect("root");
+        let manifests = root.path().join("manifests");
+        let certifications = root.path().join("verified");
+        fs::create_dir_all(&manifests).expect("manifest directory");
+        fs::create_dir_all(&certifications).expect("certification directory");
+        fs::write(root.path().join("Cargo.toml"), "[workspace]\n").expect("source path");
+
+        let manifest = manifest();
+        fs::write(
+            manifests.join("echo-provider.json"),
+            serde_json::to_vec_pretty(&manifest).expect("manifest JSON"),
+        )
+        .expect("manifest file");
+        fs::write(
+            certifications.join("echo-provider-1.0.0.json"),
+            serde_json::to_vec_pretty(&certification(
+                &manifest,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            ))
+            .expect("certification JSON"),
+        )
+        .expect("certification file");
+
+        let error = VerifiedCertificationSet::load(
+            &manifests,
+            &certifications,
+            root.path(),
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        )
+        .expect_err("commit mismatch");
+        assert!(matches!(error, CertificationError::CommitMismatch { .. }));
     }
 }
