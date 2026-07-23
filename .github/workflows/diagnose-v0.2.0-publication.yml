@@ -25,26 +25,34 @@ jobs:
 
           gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${main_commit}&per_page=100" \
             > diagnostics/runs.json
-          jq '[.workflow_runs[] | {name, status, conclusion, run_number, event, head_sha, html_url}]' \
+          jq '[.workflow_runs[] | {id, name, status, conclusion, run_number, event, head_sha, html_url}]' \
             diagnostics/runs.json > diagnostics/run-summary.json
 
-          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.2.0" > diagnostics/tag.json 2> diagnostics/tag.stderr; then
-            echo present > diagnostics/tag-status.txt
-          else
-            echo missing > diagnostics/tag-status.txt
-          fi
+          for tag in v0.1.0 v0.2.0; do
+            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
+                > "diagnostics/${tag}-tag.json" 2> "diagnostics/${tag}-tag.stderr"; then
+              echo present > "diagnostics/${tag}-tag-status.txt"
+            else
+              echo missing > "diagnostics/${tag}-tag-status.txt"
+            fi
+            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
+                --json tagName,isDraft,isPrerelease,targetCommitish,assets \
+                > "diagnostics/${tag}-release.json" 2> "diagnostics/${tag}-release.stderr"; then
+              echo present > "diagnostics/${tag}-release-status.txt"
+            else
+              echo missing > "diagnostics/${tag}-release-status.txt"
+            fi
+          done
 
-          if gh release view v0.2.0 --json tagName,isDraft,isPrerelease,targetCommitish,assets \
-              > diagnostics/release.json 2> diagnostics/release.stderr; then
-            echo present > diagnostics/release-status.txt
-          else
-            echo missing > diagnostics/release-status.txt
-          fi
+          jq -r '.workflow_runs[] | select(.name == "publish-v0.2.0-tag" and .conclusion == "failure") | .id' \
+            diagnostics/runs.json | head -n 3 | while read -r run_id; do
+              gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --log-failed \
+                > "diagnostics/publish-${run_id}.log" 2>&1 || true
+            done
 
           cat diagnostics/main-commit.txt
           cat diagnostics/run-summary.json
-          cat diagnostics/tag-status.txt
-          cat diagnostics/release-status.txt
+          for status in diagnostics/*-status.txt; do printf '%s: ' "$status"; cat "$status"; done
 
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
