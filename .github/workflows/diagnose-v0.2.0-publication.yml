@@ -1,5 +1,5 @@
 name: diagnose-v0.2.0-publication
-# inspect release runs for immutable v0.2.0 tag commit
+# refresh after release dispatch merge
 
 on:
   pull_request:
