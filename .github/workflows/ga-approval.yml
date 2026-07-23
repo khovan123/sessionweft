@@ -5,13 +5,24 @@ on:
     paths:
       - "Cargo.toml"
       - "Cargo.lock"
+      - "apps/**"
       - "crates/sessionweft-release-gate/**"
-      - "release/ga-policy-0.1.0.json"
-      - "release/evidence/ga-0.1.0.json"
+      - "crates/sessionweft-adapter-certification/**"
+      - "crates/sessionweft-tenant-runtime/**"
+      - "crates/sessionweft-tenancy/**"
+      - "crates/sessionweft-billing/**"
+      - "crates/sessionweft-billing-stripe/**"
+      - "crates/sessionweft-plugin-wasm/**"
+      - "release/ga-policy-0.2.0.json"
+      - "release/evidence/ga-0.2.0.json"
+      - "release/adapters/**"
       - "docs/09-release/ga-*.md"
+      - "docs/09-release/general-availability-0.2.0.md"
       - "scripts/release/**"
       - ".github/workflows/ga-approval.yml"
       - ".github/workflows/release.yml"
+      - ".github/workflows/publish-v0.2.0-tag.yml"
+      - ".github/workflows/verify-v0.2.0-publication.yml"
   push:
     branches: [main]
   workflow_dispatch:
@@ -19,10 +30,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ga-approval-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   general-availability:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
@@ -37,56 +52,78 @@ jobs:
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo test --workspace --locked
 
-      - name: Validate owner authorization and GA scope
+      - name: Validate owner authorization and 0.2.0 GA scope
         run: |
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          policy = json.loads(Path("release/ga-policy-0.1.0.json").read_text())
-          evidence = json.loads(Path("release/evidence/ga-0.1.0.json").read_text())
-          assert policy["release"] == "0.1.0"
-          assert evidence["release"] == "0.1.0"
+          policy = json.loads(Path("release/ga-policy-0.2.0.json").read_text())
+          evidence = json.loads(Path("release/evidence/ga-0.2.0.json").read_text())
+          assert policy["release"] == "0.2.0"
+          assert evidence["release"] == "0.2.0"
           assert Path("docs/09-release/ga-authorization.md").is_file()
-          required = {"architecture", "security", "operations"}
+          assert Path("docs/09-release/general-availability-0.2.0.md").is_file()
+          required_phase3 = {
+              "tenant_runtime_isolation",
+              "billing_idempotence",
+              "portable_sandbox_os_matrix",
+              "adapter_certification_activation",
+          }
+          assert required_phase3.issubset(policy["required_gates"])
+          assert required_phase3.issubset(evidence["gates"])
+          required_roles = {"architecture", "security", "operations"}
           signoffs = {item["role"]: item for item in evidence["signoffs"]}
-          assert set(signoffs) == required
-          for role in required:
+          assert set(signoffs) == required_roles
+          for role in required_roles:
               item = signoffs[role]
               assert item["reviewer"] == "khovan123"
               assert item["human"] is True
               assert item["decision"] == "approved_for_ga"
               assert "docs/09-release/ga-authorization.md" in item["evidence"]
+              assert "docs/09-release/general-availability-0.2.0.md" in item["evidence"]
           assert evidence["security_findings"]["critical_open"] == 0
           assert evidence["security_findings"]["high_open"] == 0
           PY
 
-      - name: Materialize and evaluate exact-commit GA evidence
+      - name: Materialize and evaluate exact-commit 0.2.0 evidence
         run: |
           python3 scripts/release/materialize-evidence.py \
-            --template release/evidence/ga-0.1.0.json \
+            --template release/evidence/ga-0.2.0.json \
             --output release/evidence/ga-verified.json \
             --commit "$GITHUB_SHA"
           cargo run -p sessionweft-release-gate --locked -- \
-            --policy release/ga-policy-0.1.0.json \
+            --policy release/ga-policy-0.2.0.json \
             --evidence release/evidence/ga-verified.json \
             --level ga
 
-      - name: Build GA release package
+      - name: Build 0.2.0 GA release package
         env:
+          RELEASE_POLICY_PATH: release/ga-policy-0.2.0.json
           RELEASE_EVIDENCE_PATH: release/evidence/ga-verified.json
-        run: bash scripts/release/package.sh 0.1.0
+        run: bash scripts/release/package.sh 0.2.0
 
-      - name: Upload GA decision evidence
+      - name: Verify packaged activation evidence
+        run: |
+          archive="$(find dist -maxdepth 1 -name 'sessionweft-0.2.0-*.tar.gz' -print -quit)"
+          test -n "$archive"
+          mkdir -p /tmp/sessionweft-ga-package
+          tar -xzf "$archive" -C /tmp/sessionweft-ga-package
+          root="$(find /tmp/sessionweft-ga-package -mindepth 1 -maxdepth 1 -type d -print -quit)"
+          test -f "$root/config/adapter-activation.json"
+          test -n "$(find "$root/config/adapter-manifests" -name '*.json' -print -quit)"
+          test -n "$(find "$root/config/adapter-certifications" -name '*.json' -print -quit)"
+          grep -qx "commit=$GITHUB_SHA" "$root/BUILD-INFO"
+          grep -qx 'release_gate=ga' "$root/BUILD-INFO"
+
+      - name: Upload 0.2.0 GA decision evidence
         uses: actions/upload-artifact@v4
         with:
-          name: sessionweft-0.1.0-ga-evidence
+          name: sessionweft-0.2.0-ga-evidence
           path: |
             release/evidence/ga-verified.json
             docs/09-release/ga-authorization.md
-            docs/09-release/ga-architecture-review.md
-            docs/09-release/ga-security-review.md
-            docs/09-release/ga-operations-review.md
+            docs/09-release/general-availability-0.2.0.md
             dist/*.tar.gz
             dist/*.sha256
           if-no-files-found: error
