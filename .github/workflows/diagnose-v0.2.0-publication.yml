@@ -1,5 +1,5 @@
 name: diagnose-v0.2.0-publication
-# refresh after release dispatch merge
+# final verification after v0.2.0 release success
 
 on:
   pull_request:
