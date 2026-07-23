@@ -1,15 +1,9 @@
 name: verify-v0.1.0-publication
 
 on:
-  pull_request:
-    paths:
-      - ".github/workflows/verify-v0.1.0-publication.yml"
-      - "release/publication/v0.1.0.json"
-  push:
-    branches: [main]
-    paths:
-      - ".github/workflows/verify-v0.1.0-publication.yml"
-      - "release/publication/v0.1.0.json"
+  workflow_run:
+    workflows: ["repair-v0.1.0-publication"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -17,6 +11,9 @@ permissions:
 
 jobs:
   verify:
+    if: >-
+      github.repository == 'khovan123/sessionweft' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -25,10 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: v0.1.0
           fetch-depth: 0
       - name: Fetch immutable tag and release metadata
         run: |
-          git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG"
           mkdir -p /tmp/sessionweft-release
           gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets,targetCommitish > /tmp/sessionweft-release/release.json
           python3 - <<'PY'
