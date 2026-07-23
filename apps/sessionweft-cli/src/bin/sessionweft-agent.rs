@@ -1,4 +1,8 @@
-use std::{env, path::{Path, PathBuf}, process::Stdio};
+use std::{
+    env,
+    path::{Path, PathBuf},
+    process::Stdio,
+};
 
 use anyhow::{Context, bail};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -10,7 +14,7 @@ use tokio::{fs, io::AsyncWriteExt, process::Command};
 #[command(
     name = "sessionweft-agent",
     version,
-    about = "Run independent coding agents against durable SessionWeft sessions"
+    about = "Run interchangeable agents on one durable shared SessionWeft session"
 )]
 struct Cli {
     #[arg(
@@ -29,35 +33,32 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum AgentCommand {
-    /// Create a new durable chat session.
-    New {
-        title: String,
-    },
-    /// List sessions that can be resumed.
+    /// Create a new durable shared Session.
+    New { title: String },
+    /// List Sessions that can be selected and resumed.
     Sessions {
         #[arg(long, default_value_t = 100)]
         limit: u32,
     },
-    /// Print the shared chat history for one session.
-    History {
-        session_id: String,
-    },
-    /// Build and print the exact context that would be sent to an agent.
+    /// Print the complete shared chat history for one Session.
+    History { session_id: String },
+    /// Print the context reconstructed from one durable Session.
     Context {
         session_id: String,
         #[arg(long, default_value_t = 100)]
         messages: usize,
     },
-    /// Run or resume one agent on a durable shared session.
+    /// Run an agent on a new or existing Session. Alias: resume.
+    #[command(alias = "resume")]
     Run {
         #[arg(value_enum)]
         agent: AgentKind,
         prompt: String,
-        /// Existing Session ID. Omit it to create a new session.
+        /// Existing Session ID. Omit it to create a new Session.
         #[arg(long)]
         session: Option<String>,
-        /// Title used only when a new session is created.
-        #[arg(long, default_value = "Standalone agent session")]
+        /// Title used only when a new Session is created.
+        #[arg(long, default_value = "Shared agent session")]
         title: String,
         #[arg(long, default_value = ".")]
         cwd: PathBuf,
@@ -101,8 +102,15 @@ impl RuntimeClient {
         }
     }
 
-    async fn request(&self, method: Method, path: &str, body: Option<Value>) -> anyhow::Result<Value> {
-        let mut request = self.http.request(method, format!("{}{}", self.endpoint, path));
+    async fn request(
+        &self,
+        method: Method,
+        path: &str,
+        body: Option<Value>,
+    ) -> anyhow::Result<Value> {
+        let mut request = self
+            .http
+            .request(method, format!("{}{}", self.endpoint, path));
         if let Some(token) = self.token.as_deref() {
             request = request.bearer_auth(token);
         }
@@ -110,15 +118,22 @@ impl RuntimeClient {
             request = request.json(&body);
         }
 
-        let response = request.send().await.context("failed to reach SessionWeft Runtime")?;
+        let response = request
+            .send()
+            .await
+            .context("failed to reach SessionWeft Runtime")?;
         let status = response.status();
-        let bytes = response.bytes().await.context("failed to read Runtime response")?;
+        let bytes = response
+            .bytes()
+            .await
+            .context("failed to read Runtime response")?;
         let value = if bytes.is_empty() {
             Value::Null
         } else {
             serde_json::from_slice(&bytes)
                 .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()))
         };
+
         if !status.is_success() {
             eprintln!("{}", serde_json::to_string_pretty(&value)?);
             bail!("Runtime request failed with HTTP {status}");
@@ -130,18 +145,30 @@ impl RuntimeClient {
     }
 
     async fn create_session(&self, title: &str) -> anyhow::Result<Value> {
-        self.request(Method::POST, "/v1/sessions", Some(json!({"title": title})))
-            .await
+        self.request(
+            Method::POST,
+            "/v1/sessions",
+            Some(json!({"title": title})),
+        )
+        .await
     }
 
     async fn list_sessions(&self, limit: u32) -> anyhow::Result<Value> {
-        self.request(Method::GET, &format!("/v1/sessions?limit={limit}"), None)
-            .await
+        self.request(
+            Method::GET,
+            &format!("/v1/sessions?limit={limit}"),
+            None,
+        )
+        .await
     }
 
     async fn get_session(&self, session_id: &str) -> anyhow::Result<Value> {
-        self.request(Method::GET, &format!("/v1/sessions/{session_id}"), None)
-            .await
+        self.request(
+            Method::GET,
+            &format!("/v1/sessions/{session_id}"),
+            None,
+        )
+        .await
     }
 
     async fn append_message(
@@ -176,9 +203,12 @@ async fn main() -> anyhow::Result<()> {
             let session = runtime.get_session(&session_id).await?;
             print_history(&session)?;
         }
-        AgentCommand::Context { session_id, messages } => {
+        AgentCommand::Context {
+            session_id,
+            messages,
+        } => {
             let session = runtime.get_session(&session_id).await?;
-            println!("{}", build_context(&session, messages)?);
+            println!("{}", build_context(&session, messages, None)?);
         }
         AgentCommand::Run {
             agent,
@@ -188,7 +218,16 @@ async fn main() -> anyhow::Result<()> {
             cwd,
             context_messages,
         } => {
-            run_agent(&runtime, agent, session, &title, &cwd, &prompt, context_messages).await?;
+            run_agent(
+                &runtime,
+                agent,
+                session,
+                &title,
+                &cwd,
+                &prompt,
+                context_messages,
+            )
+            .await?;
         }
     }
 
@@ -215,13 +254,13 @@ async fn run_agent(
     let session_id = required_string(&initial, "id")?;
     let version = required_u64(&initial, "version")?;
 
-    let tagged_prompt = format!("[agent:{}] {prompt}", agent.label());
+    let tagged_prompt = format!("[to-agent:{}] {prompt}", agent.label());
     runtime
         .append_message(&session_id, version, "user", &tagged_prompt)
         .await?;
 
     let session = runtime.get_session(&session_id).await?;
-    let context = build_context(&session, context_messages)?;
+    let context = build_context(&session, context_messages, Some(agent))?;
 
     if matches!(agent, AgentKind::Antigravity) {
         let context_path = write_antigravity_context(&cwd, &session_id, &context).await?;
@@ -229,7 +268,7 @@ async fn run_agent(
         let latest = runtime.get_session(&session_id).await?;
         let latest_version = required_u64(&latest, "version")?;
         let message = format!(
-            "[agent:antigravity] IDE launched for {}. Shared Session context: {}",
+            "[agent:antigravity] IDE opened for {}. Durable shared Session context: {}",
             cwd.display(),
             context_path.display()
         );
@@ -257,11 +296,19 @@ async fn run_agent(
     Ok(())
 }
 
-async fn execute_terminal_agent(agent: AgentKind, cwd: &Path, context: &str) -> anyhow::Result<String> {
+async fn execute_terminal_agent(
+    agent: AgentKind,
+    cwd: &Path,
+    context: &str,
+) -> anyhow::Result<String> {
     let (program, args, stdin_prompt) = match agent {
         AgentKind::Codex => (
             env::var("SESSIONWEFT_CODEX_BIN").unwrap_or_else(|_| "codex".into()),
-            vec!["exec".to_owned(), "--skip-git-repo-check".to_owned(), "-".to_owned()],
+            vec![
+                "exec".to_owned(),
+                "--skip-git-repo-check".to_owned(),
+                "-".to_owned(),
+            ],
             true,
         ),
         AgentKind::Claude => (
@@ -289,16 +336,24 @@ async fn execute_terminal_agent(agent: AgentKind, cwd: &Path, context: &str) -> 
         command.stdin(Stdio::null());
     }
 
-    let mut child = command
-        .spawn()
-        .with_context(|| format!("failed to launch {program}; install it or configure its SESSIONWEFT_*_BIN variable"))?;
+    let mut child = command.spawn().with_context(|| {
+        format!(
+            "failed to launch {program}; install it or configure its SESSIONWEFT_*_BIN variable"
+        )
+    })?;
     if stdin_prompt {
-        let mut stdin = child.stdin.take().context("agent stdin was not available")?;
+        let mut stdin = child
+            .stdin
+            .take()
+            .context("agent stdin was not available")?;
         stdin.write_all(context.as_bytes()).await?;
         stdin.shutdown().await?;
     }
 
-    let output = child.wait_with_output().await.context("failed while waiting for agent")?;
+    let output = child
+        .wait_with_output()
+        .await
+        .context("failed while waiting for agent")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         bail!("{program} exited with {}: {}", output.status, stderr.trim());
@@ -310,7 +365,11 @@ async fn execute_terminal_agent(agent: AgentKind, cwd: &Path, context: &str) -> 
     Ok(stdout)
 }
 
-async fn write_antigravity_context(cwd: &Path, session_id: &str, context: &str) -> anyhow::Result<PathBuf> {
+async fn write_antigravity_context(
+    cwd: &Path,
+    session_id: &str,
+    context: &str,
+) -> anyhow::Result<PathBuf> {
     let directory = cwd.join(".sessionweft").join("contexts");
     fs::create_dir_all(&directory).await?;
     let path = directory.join(format!("{session_id}.md"));
@@ -319,8 +378,8 @@ async fn write_antigravity_context(cwd: &Path, session_id: &str, context: &str) 
 }
 
 async fn launch_antigravity(cwd: &Path, context_path: &Path) -> anyhow::Result<()> {
-    let program = env::var("SESSIONWEFT_ANTIGRAVITY_BIN")
-        .unwrap_or_else(|_| "antigravity-ide".into());
+    let program =
+        env::var("SESSIONWEFT_ANTIGRAVITY_BIN").unwrap_or_else(|_| "antigravity-ide".into());
     Command::new(&program)
         .arg(cwd)
         .env("SESSIONWEFT_SESSION_CONTEXT", context_path)
@@ -328,42 +387,65 @@ async fn launch_antigravity(cwd: &Path, context_path: &Path) -> anyhow::Result<(
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .with_context(|| format!("failed to launch {program}; configure SESSIONWEFT_ANTIGRAVITY_BIN if needed"))?;
+        .with_context(|| {
+            format!("failed to launch {program}; configure SESSIONWEFT_ANTIGRAVITY_BIN if needed")
+        })?;
     Ok(())
 }
 
-fn build_context(session: &Value, limit: usize) -> anyhow::Result<String> {
+fn build_context(
+    session: &Value,
+    limit: usize,
+    current_agent: Option<AgentKind>,
+) -> anyhow::Result<String> {
     let id = required_string(session, "id")?;
     let title = required_string(session, "title")?;
     let messages = session
         .get("messages")
         .and_then(Value::as_array)
         .context("Session response is missing messages")?;
-    let start = messages.len().saturating_sub(limit);
+    let start = messages.len().saturating_sub(limit.max(1));
+    let agent = current_agent.map_or("unspecified", AgentKind::label);
 
     let mut result = format!(
-        "# SessionWeft shared session\n\nSession ID: {id}\nTitle: {title}\n\n## Shared chat history\n"
+        "# SessionWeft durable shared Session\n\nSession ID: {id}\nTitle: {title}\nCurrent agent adapter: {agent}\n\n## Shared chat history\n"
     );
     for message in &messages[start..] {
-        let role = message.get("role").and_then(Value::as_str).unwrap_or("unknown");
-        let content = message.get("content").and_then(Value::as_str).unwrap_or_default();
+        let role = message
+            .get("role")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let content = message
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         result.push_str(&format!("\n### {role}\n{content}\n"));
     }
     result.push_str(
-        "\n## Instructions\nContinue from this shared history. Preserve decisions and constraints from earlier agents. Answer only the latest user request.\n",
+        "\n## Runtime contract\nThe Session, not the current agent, owns durable history and context. Continue from all prior agents' work. Preserve previous decisions and constraints unless the latest user request explicitly changes them. Answer only the latest user request.\n",
     );
     Ok(result)
 }
 
 fn print_history(session: &Value) -> anyhow::Result<()> {
-    println!("Session: {} — {}", required_string(session, "id")?, required_string(session, "title")?);
+    println!(
+        "Session: {} — {}",
+        required_string(session, "id")?,
+        required_string(session, "title")?
+    );
     let messages = session
         .get("messages")
         .and_then(Value::as_array)
         .context("Session response is missing messages")?;
     for message in messages {
-        let role = message.get("role").and_then(Value::as_str).unwrap_or("unknown");
-        let content = message.get("content").and_then(Value::as_str).unwrap_or_default();
+        let role = message
+            .get("role")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown");
+        let content = message
+            .get("content")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         println!("\n[{role}]\n{content}");
     }
     Ok(())
@@ -394,19 +476,32 @@ mod tests {
     use super::*;
 
     #[test]
-    fn context_keeps_recent_messages_and_agent_provenance() {
+    fn context_keeps_recent_cross_agent_history() {
         let session = json!({
             "id": "session-1",
             "title": "demo",
             "messages": [
                 {"role": "user", "content": "old"},
                 {"role": "assistant", "content": "[agent:codex] first"},
-                {"role": "user", "content": "[agent:claude] continue"}
+                {"role": "user", "content": "[to-agent:claude] continue"}
             ]
         });
-        let context = build_context(&session, 2).expect("context");
+        let context = build_context(&session, 2, Some(AgentKind::Claude)).expect("context");
         assert!(!context.contains("old"));
         assert!(context.contains("[agent:codex] first"));
-        assert!(context.contains("[agent:claude] continue"));
+        assert!(context.contains("[to-agent:claude] continue"));
+        assert!(context.contains("Current agent adapter: claude"));
+    }
+
+    #[test]
+    fn context_makes_session_ownership_explicit() {
+        let session = json!({
+            "id": "session-2",
+            "title": "resume",
+            "messages": [{"role": "assistant", "content": "[agent:gemini] result"}]
+        });
+        let context = build_context(&session, 100, Some(AgentKind::Codex)).expect("context");
+        assert!(context.contains("The Session, not the current agent, owns durable history"));
+        assert!(context.contains("[agent:gemini] result"));
     }
 }
