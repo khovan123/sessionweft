@@ -25,6 +25,10 @@ jobs:
       TAG: v0.2.0
       ISSUE: "66"
     steps:
+      - name: Announce observer start
+        run: |
+          gh issue comment "$ISSUE" --body "v0.2.0 publication observer started for exact main commit \`$TARGET_COMMIT\`. The observer branch is read-only with respect to \`main\`; #66 remains open until publication verification passes."
+
       - name: Wait for exact main-commit gates
         run: |
           for attempt in $(seq 1 90); do
