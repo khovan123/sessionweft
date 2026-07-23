@@ -140,7 +140,45 @@ jobs:
           test -f "$root/config/adapter-activation.json"
           test -n "$(find "$root/config/adapter-manifests" -name '*.json' -print -quit)"
           test -n "$(find "$root/config/adapter-certifications" -name '*.json' -print -quit)"
-          (cd "$root" && sha256sum -c MANIFEST.sha256)
+          python3 - "$root" <<'PY'
+          import hashlib
+          import sys
+          from pathlib import Path, PurePosixPath
+
+          root = Path(sys.argv[1]).resolve()
+          manifest = root / 'MANIFEST.sha256'
+          lines = [line for line in manifest.read_text(encoding='utf-8').splitlines() if line.strip()]
+          if not lines:
+              raise SystemExit('package manifest contains no entries')
+
+          legacy_prefix = PurePosixPath('dist') / root.name
+          checked = 0
+          for line in lines:
+              try:
+                  digest, recorded = line.split(maxsplit=1)
+              except ValueError as error:
+                  raise SystemExit(f'invalid package manifest line: {line!r}') from error
+              recorded = recorded.lstrip('*')
+              path = PurePosixPath(recorded)
+              if path.is_absolute() or '..' in path.parts:
+                  raise SystemExit(f'unsafe package manifest path: {recorded}')
+              if path.parts[:2] == legacy_prefix.parts:
+                  path = PurePosixPath(*path.parts[2:])
+              elif path.parts and path.parts[0] == '.':
+                  path = PurePosixPath(*path.parts[1:])
+              if not path.parts or path.name == 'MANIFEST.sha256':
+                  raise SystemExit(f'invalid package manifest target: {recorded}')
+              target = (root / Path(*path.parts)).resolve()
+              if root not in target.parents or not target.is_file():
+                  raise SystemExit(f'package manifest target is missing or escapes archive: {recorded}')
+              actual = hashlib.sha256(target.read_bytes()).hexdigest()
+              if actual != digest:
+                  raise SystemExit(
+                      f'package manifest digest mismatch for {recorded}: expected {digest}, got {actual}'
+                  )
+              checked += 1
+          print(f'verified {checked} packaged Runtime manifest entries')
+          PY
 
       - name: Upload publication verification receipt
         uses: actions/upload-artifact@v4

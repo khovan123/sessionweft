@@ -124,7 +124,12 @@ adapter_activation=config/adapter-activation.json
 adapter_certifications=config/adapter-certifications
 INFO
 
-find "$PACKAGE_DIR" -type f -print0 | sort -z | xargs -0 sha256sum > "$PACKAGE_DIR/MANIFEST.sha256"
+(
+  cd "$PACKAGE_DIR"
+  find . -type f ! -name MANIFEST.sha256 -print0 \
+    | sort -z \
+    | xargs -0 sha256sum > MANIFEST.sha256
+)
 tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner \
   -czf "$ARCHIVE" -C "$DIST_ROOT" "$PACKAGE_NAME"
 sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
