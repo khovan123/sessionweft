@@ -11,10 +11,17 @@ if [[ "$VERSION" == *-rc.* ]]; then
   DEFAULT_POLICY="release/release-policy.json"
   DEFAULT_EVIDENCE="release/evidence/rc-0.1.0.json"
   DEFAULT_LEVEL="rc"
-else
+elif [[ "$VERSION" == "0.2.0" ]]; then
+  DEFAULT_POLICY="release/ga-policy-0.2.0.json"
+  DEFAULT_EVIDENCE="release/evidence/ga-0.2.0.json"
+  DEFAULT_LEVEL="ga"
+elif [[ "$VERSION" == "0.1.0" ]]; then
   DEFAULT_POLICY="release/ga-policy-0.1.0.json"
   DEFAULT_EVIDENCE="release/evidence/ga-0.1.0.json"
   DEFAULT_LEVEL="ga"
+else
+  printf '%s\n' "No release policy is registered for stable version ${VERSION}" >&2
+  exit 1
 fi
 
 POLICY_PATH="${RELEASE_POLICY_PATH:-$DEFAULT_POLICY}"
@@ -96,6 +103,9 @@ PY
 cp README.md PROJECT.md "$PACKAGE_DIR/docs/"
 cp docs/09-release/install-upgrade.md "$PACKAGE_DIR/docs/"
 cp docs/09-release/general-availability.md "$PACKAGE_DIR/docs/"
+if [[ -f "docs/09-release/general-availability-${VERSION}.md" ]]; then
+  cp "docs/09-release/general-availability-${VERSION}.md" "$PACKAGE_DIR/docs/"
+fi
 cp docs/10-deployment/disaster-recovery.md "$PACKAGE_DIR/docs/"
 cp docs/10-deployment/alerts-and-runbooks.md "$PACKAGE_DIR/docs/"
 if [[ -f LICENSE ]]; then
