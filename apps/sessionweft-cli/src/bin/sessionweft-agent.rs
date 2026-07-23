@@ -74,6 +74,8 @@ enum AgentKind {
     Claude,
     Gemini,
     Antigravity,
+    FccClaude,
+    FccCodex,
 }
 
 impl AgentKind {
@@ -83,6 +85,30 @@ impl AgentKind {
             Self::Claude => "claude",
             Self::Gemini => "gemini",
             Self::Antigravity => "antigravity",
+            Self::FccClaude => "fcc-claude",
+            Self::FccCodex => "fcc-codex",
+        }
+    }
+
+    fn executable_env(self) -> Option<&'static str> {
+        match self {
+            Self::Codex => Some("SESSIONWEFT_CODEX_BIN"),
+            Self::Claude => Some("SESSIONWEFT_CLAUDE_BIN"),
+            Self::Gemini => Some("SESSIONWEFT_GEMINI_BIN"),
+            Self::Antigravity => None,
+            Self::FccClaude => Some("SESSIONWEFT_FCC_CLAUDE_BIN"),
+            Self::FccCodex => Some("SESSIONWEFT_FCC_CODEX_BIN"),
+        }
+    }
+
+    fn default_program(self) -> &'static str {
+        match self {
+            Self::Codex => "codex",
+            Self::Claude => "claude",
+            Self::Gemini => "gemini",
+            Self::Antigravity => "antigravity-ide",
+            Self::FccClaude => "fcc-claude",
+            Self::FccCodex => "fcc-codex",
         }
     }
 }
@@ -284,14 +310,20 @@ async fn run_agent(
     Ok(())
 }
 
-async fn execute_terminal_agent(
-    agent: AgentKind,
-    cwd: &Path,
-    context: &str,
-) -> anyhow::Result<String> {
-    let (program, args, stdin_prompt) = match agent {
-        AgentKind::Codex => (
-            env::var("SESSIONWEFT_CODEX_BIN").unwrap_or_else(|_| "codex".into()),
+struct TerminalAgentSpec {
+    program: String,
+    args: Vec<String>,
+    stdin_prompt: bool,
+}
+
+fn terminal_agent_spec(agent: AgentKind, context: &str) -> anyhow::Result<TerminalAgentSpec> {
+    let executable_env = agent
+        .executable_env()
+        .context("Antigravity is launched as an IDE")?;
+    let program = env::var(executable_env).unwrap_or_else(|_| agent.default_program().into());
+
+    let (args, stdin_prompt) = match agent {
+        AgentKind::Codex | AgentKind::FccCodex => (
             vec![
                 "exec".to_owned(),
                 "--skip-git-repo-check".to_owned(),
@@ -299,26 +331,32 @@ async fn execute_terminal_agent(
             ],
             true,
         ),
-        AgentKind::Claude => (
-            env::var("SESSIONWEFT_CLAUDE_BIN").unwrap_or_else(|_| "claude".into()),
-            vec!["-p".to_owned(), context.to_owned()],
-            false,
-        ),
-        AgentKind::Gemini => (
-            env::var("SESSIONWEFT_GEMINI_BIN").unwrap_or_else(|_| "gemini".into()),
-            vec!["-p".to_owned(), context.to_owned()],
-            false,
-        ),
-        AgentKind::Antigravity => unreachable!("Antigravity is launched as an IDE"),
+        AgentKind::Claude | AgentKind::FccClaude | AgentKind::Gemini => {
+            (vec!["-p".to_owned(), context.to_owned()], false)
+        }
+        AgentKind::Antigravity => bail!("Antigravity is launched as an IDE"),
     };
 
-    let mut command = Command::new(&program);
+    Ok(TerminalAgentSpec {
+        program,
+        args,
+        stdin_prompt,
+    })
+}
+
+async fn execute_terminal_agent(
+    agent: AgentKind,
+    cwd: &Path,
+    context: &str,
+) -> anyhow::Result<String> {
+    let spec = terminal_agent_spec(agent, context)?;
+    let mut command = Command::new(&spec.program);
     command
-        .args(&args)
+        .args(&spec.args)
         .current_dir(cwd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if stdin_prompt {
+    if spec.stdin_prompt {
         command.stdin(Stdio::piped());
     } else {
         command.stdin(Stdio::null());
@@ -326,10 +364,12 @@ async fn execute_terminal_agent(
 
     let mut child = command.spawn().with_context(|| {
         format!(
-            "failed to launch {program}; install it or configure its SESSIONWEFT_*_BIN variable"
+            "failed to launch {}; install it or configure {}",
+            spec.program,
+            agent.executable_env().unwrap_or("its executable variable")
         )
     })?;
-    if stdin_prompt {
+    if spec.stdin_prompt {
         let mut stdin = child
             .stdin
             .take()
@@ -344,11 +384,16 @@ async fn execute_terminal_agent(
         .context("failed while waiting for agent")?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        bail!("{program} exited with {}: {}", output.status, stderr.trim());
+        bail!(
+            "{} exited with {}: {}",
+            spec.program,
+            output.status,
+            stderr.trim()
+        );
     }
     let stdout = String::from_utf8(output.stdout).context("agent output was not valid UTF-8")?;
     if stdout.trim().is_empty() {
-        bail!("{program} returned an empty response");
+        bail!("{} returned an empty response", spec.program);
     }
     Ok(stdout)
 }
@@ -366,8 +411,8 @@ async fn write_antigravity_context(
 }
 
 async fn launch_antigravity(cwd: &Path, context_path: &Path) -> anyhow::Result<()> {
-    let program =
-        env::var("SESSIONWEFT_ANTIGRAVITY_BIN").unwrap_or_else(|_| "antigravity-ide".into());
+    let program = env::var("SESSIONWEFT_ANTIGRAVITY_BIN")
+        .unwrap_or_else(|_| AgentKind::Antigravity.default_program().into());
     Command::new(&program)
         .arg(cwd)
         .env("SESSIONWEFT_SESSION_CONTEXT", context_path)
@@ -471,14 +516,14 @@ mod tests {
             "messages": [
                 {"role": "user", "content": "old"},
                 {"role": "assistant", "content": "[agent:codex] first"},
-                {"role": "user", "content": "[to-agent:claude] continue"}
+                {"role": "user", "content": "[to-agent:fcc-claude] continue"}
             ]
         });
-        let context = build_context(&session, 2, Some(AgentKind::Claude)).expect("context");
+        let context = build_context(&session, 2, Some(AgentKind::FccClaude)).expect("context");
         assert!(!context.contains("old"));
         assert!(context.contains("[agent:codex] first"));
-        assert!(context.contains("[to-agent:claude] continue"));
-        assert!(context.contains("Current agent adapter: claude"));
+        assert!(context.contains("[to-agent:fcc-claude] continue"));
+        assert!(context.contains("Current agent adapter: fcc-claude"));
     }
 
     #[test]
@@ -488,8 +533,24 @@ mod tests {
             "title": "resume",
             "messages": [{"role": "assistant", "content": "[agent:gemini] result"}]
         });
-        let context = build_context(&session, 100, Some(AgentKind::Codex)).expect("context");
+        let context = build_context(&session, 100, Some(AgentKind::FccCodex)).expect("context");
         assert!(context.contains("The Session, not the current agent, owns durable history"));
         assert!(context.contains("[agent:gemini] result"));
+    }
+
+    #[test]
+    fn free_claude_code_adapters_use_official_launcher_names() {
+        assert_eq!(AgentKind::FccClaude.label(), "fcc-claude");
+        assert_eq!(AgentKind::FccClaude.default_program(), "fcc-claude");
+        assert_eq!(
+            AgentKind::FccClaude.executable_env(),
+            Some("SESSIONWEFT_FCC_CLAUDE_BIN")
+        );
+        assert_eq!(AgentKind::FccCodex.label(), "fcc-codex");
+        assert_eq!(AgentKind::FccCodex.default_program(), "fcc-codex");
+        assert_eq!(
+            AgentKind::FccCodex.executable_env(),
+            Some("SESSIONWEFT_FCC_CODEX_BIN")
+        );
     }
 }
