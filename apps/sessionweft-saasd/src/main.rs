@@ -25,12 +25,12 @@ use sessionweft_saas_postgres::{
 };
 use sessionweft_tenancy::{
     PrincipalId, QuotaDimension, TenantContext, TenantId, TenantQuota, TenantRepository,
-    TenantRole, TenantService,
+    TenantService,
 };
 use sessionweft_tenant_runtime::TenantRuntimeManager;
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
-use tower_http::{request_id::MakeRequestUuid, trace::TraceLayer};
+use tower_http::trace::TraceLayer;
 use tracing::info;
 use uuid::Uuid;
 
