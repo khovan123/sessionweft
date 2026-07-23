@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "runtimes": {
+    "sessionweftd": [
+      {
+        "adapter_id": "echo-provider",
+        "version": "1.0.0",
+        "kind": "provider"
+      },
+      {
+        "adapter_id": "ollama-provider",
+        "version": "1.0.0",
+        "kind": "provider"
+      },
+      {
+        "adapter_id": "wasm-portable-plugin",
+        "version": "1.0.0",
+        "kind": "plugin"
+      },
+      {
+        "adapter_id": "sqlite-local-deployment",
+        "version": "1.0.0",
+        "kind": "deployment"
+      }
+    ],
+    "sessionweft-saasd": [
+      {
+        "adapter_id": "echo-provider",
+        "version": "1.0.0",
+        "kind": "provider"
+      },
+      {
+        "adapter_id": "ollama-provider",
+        "version": "1.0.0",
+        "kind": "provider"
+      },
+      {
+        "adapter_id": "wasm-portable-plugin",
+        "version": "1.0.0",
+        "kind": "plugin"
+      },
+      {
+        "adapter_id": "postgres-jetstream-multitenant-deployment",
+        "version": "1.0.0",
+        "kind": "deployment"
+      },
+      {
+        "adapter_id": "stripe-billing",
+        "version": "1.0.0",
+        "kind": "billing"
+      }
+    ]
+  }
+}
