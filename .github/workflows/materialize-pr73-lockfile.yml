@@ -1,0 +1,62 @@
+name: materialize-pr73-lockfile
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.lock"
+      - "crates/sessionweft-provider/Cargo.toml"
+      - ".github/workflows/materialize-pr73-lockfile.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lockfile:
+    if: github.head_ref == 'feature/certified-adapter-activation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Add exact internal dependency
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('Cargo.lock')
+          content = path.read_text(encoding='utf-8')
+          old = '''[[package]]
+          name = "sessionweft-provider"
+          version = "0.1.0"
+          dependencies = [
+           "async-trait",
+           "reqwest 0.12.28",
+           "serde",
+           "sessionweft-core",
+           "thiserror 2.0.19",
+           "tokio",
+          ]'''
+          new = '''[[package]]
+          name = "sessionweft-provider"
+          version = "0.1.0"
+          dependencies = [
+           "async-trait",
+           "reqwest 0.12.28",
+           "serde",
+           "sessionweft-adapter-certification",
+           "sessionweft-core",
+           "thiserror 2.0.19",
+           "tokio",
+          ]'''
+          if content.count(old) != 1:
+              raise SystemExit('expected exactly one sessionweft-provider lock entry')
+          path.write_text(content.replace(old, new), encoding='utf-8')
+          PY
+          git diff --check
+          git diff -- Cargo.lock
+      - name: Upload complete lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr73-cargo-lock
+          path: Cargo.lock
+          if-no-files-found: error
+          retention-days: 1
