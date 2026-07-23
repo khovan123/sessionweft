@@ -1,10 +1,12 @@
 name: repair-v0.1.0-publication
 
 on:
-  pull_request:
+  push:
     branches: [main]
     paths:
       - ".github/workflows/repair-v0.1.0-publication.yml"
+      - ".github/workflows/verify-v0.1.0-publication.yml"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -18,10 +20,7 @@ concurrency:
 
 jobs:
   repair:
-    if: >-
-      github.repository == 'khovan123/sessionweft' &&
-      github.head_ref == 'release/verify-v0.1.0-publication' &&
-      github.event.pull_request.head.repo.full_name == github.repository
+    if: github.repository == 'khovan123/sessionweft'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
