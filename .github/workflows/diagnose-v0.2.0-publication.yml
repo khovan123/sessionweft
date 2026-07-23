@@ -1,5 +1,4 @@
 name: diagnose-v0.2.0-publication
-# final verification after v0.2.0 release success
 
 on:
   pull_request:
@@ -17,57 +16,23 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Query publication state
+      - name: Capture final v0.2.0 verification state
         run: |
           set -euo pipefail
           mkdir -p diagnostics
-          main_commit="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
-          printf '%s\n' "$main_commit" > diagnostics/main-commit.txt
-
-          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${main_commit}&per_page=100" > diagnostics/runs.json
-          jq '[.workflow_runs[] | {id, name, status, conclusion, run_number, event, head_sha, html_url}]' \
-            diagnostics/runs.json > diagnostics/run-summary.json
-
-          for workflow in repair-v0.1.0-publication.yml release.yml verify-v0.1.0-publication.yml verify-v0.2.0-publication.yml publish-v0.2.0-tag.yml; do
-            safe="${workflow%.yml}"
-            gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/${workflow}/runs?per_page=20" \
-              > "diagnostics/${safe}-runs.json"
-            jq '[.workflow_runs[] | {id, name, status, conclusion, run_number, event, head_sha, head_branch, html_url}]' \
-              "diagnostics/${safe}-runs.json" > "diagnostics/${safe}-run-summary.json"
-            jq -r '.workflow_runs[] | select(.conclusion == "failure") | .id' \
-              "diagnostics/${safe}-runs.json" | head -n 5 | while read -r run_id; do
-                gh run view "$run_id" --repo "$GITHUB_REPOSITORY" --log-failed \
-                  > "diagnostics/${safe}-${run_id}.log" 2>&1 || true
-              done
-          done
-
-          for tag in v0.1.0 v0.2.0; do
-            if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag}" \
-                > "diagnostics/${tag}-tag.json" 2> "diagnostics/${tag}-tag.stderr"; then
-              echo present > "diagnostics/${tag}-tag-status.txt"
-              tag_commit="$(jq -r .object.sha "diagnostics/${tag}-tag.json")"
-              printf '%s\n' "$tag_commit" > "diagnostics/${tag}-commit.txt"
-              gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${tag_commit}&per_page=100" \
-                > "diagnostics/${tag}-runs.json"
-              jq '[.workflow_runs[] | {id, name, status, conclusion, run_number, event, head_sha, html_url}]' \
-                "diagnostics/${tag}-runs.json" > "diagnostics/${tag}-run-summary.json"
-            else
-              echo missing > "diagnostics/${tag}-tag-status.txt"
-            fi
-            if gh release view "$tag" --repo "$GITHUB_REPOSITORY" \
-                --json tagName,isDraft,isPrerelease,targetCommitish,assets \
-                > "diagnostics/${tag}-release.json" 2> "diagnostics/${tag}-release.stderr"; then
-              echo present > "diagnostics/${tag}-release-status.txt"
-            else
-              echo missing > "diagnostics/${tag}-release-status.txt"
-            fi
-          done
-
-          cat diagnostics/main-commit.txt
-          cat diagnostics/run-summary.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/verify-v0.2.0-publication.yml/runs?per_page=20" \
+            > diagnostics/verify-runs.json
+          jq '[.workflow_runs[] | {id, name, status, conclusion, run_number, event, head_sha, head_branch, html_url}]' \
+            diagnostics/verify-runs.json > diagnostics/verify-run-summary.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs?per_page=20" \
+            > diagnostics/release-runs.json
+          jq '[.workflow_runs[] | {id, name, status, conclusion, run_number, event, head_sha, head_branch, html_url}]' \
+            diagnostics/release-runs.json > diagnostics/release-run-summary.json
+          gh release view v0.2.0 --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,isPrerelease,targetCommitish,assets \
+            > diagnostics/v0.2.0-release.json
           cat diagnostics/release-run-summary.json
-          cat diagnostics/verify-v0.2.0-publication-run-summary.json
-          for status in diagnostics/*-status.txt; do printf '%s: ' "$status"; cat "$status"; done
+          cat diagnostics/verify-run-summary.json
 
       - name: Upload diagnostics
         uses: actions/upload-artifact@v4
