@@ -12,7 +12,14 @@ on:
       - "crates/sessionweft-billing-stripe/**"
       - "crates/sessionweft-saas-postgres/**"
       - "release/adapters/**"
-      - "scripts/release/materialize-adapter-certifications.py"
+      - "release/ga-policy-0.2.0.json"
+      - "release/evidence/ga-0.2.0.json"
+      - "docs/09-release/general-availability-0.2.0.md"
+      - "scripts/release/**"
+      - ".github/workflows/ga-approval.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/publish-v0.2.0-tag.yml"
+      - ".github/workflows/verify-v0.2.0-publication.yml"
       - ".github/workflows/phase3-qualification.yml"
   push:
     branches: [main]
@@ -26,7 +33,14 @@ on:
       - "crates/sessionweft-billing-stripe/**"
       - "crates/sessionweft-saas-postgres/**"
       - "release/adapters/**"
-      - "scripts/release/materialize-adapter-certifications.py"
+      - "release/ga-policy-0.2.0.json"
+      - "release/evidence/ga-0.2.0.json"
+      - "docs/09-release/general-availability-0.2.0.md"
+      - "scripts/release/**"
+      - ".github/workflows/ga-approval.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/publish-v0.2.0-tag.yml"
+      - ".github/workflows/verify-v0.2.0-publication.yml"
       - ".github/workflows/phase3-qualification.yml"
   workflow_dispatch:
 
