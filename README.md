@@ -2,29 +2,35 @@
 
 **One session. Many agents. One runtime.**
 
-SessionWeft is a session-first, provider-agnostic Runtime for coordinating AI agents over a shared workspace. The Runtime owns durable state; IDEs, CLIs, providers and agents act as clients or pluggable execution components.
+SessionWeft is a session-first, provider-agnostic Runtime for coordinating AI agents over a shared workspace. The Runtime owns durable state; IDEs, CLIs, providers and agents act as clients or certified execution components.
 
 ## Status
 
-SessionWeft `0.1.0` is approved for General Availability within the declared scope:
+SessionWeft `0.2.0` is qualified for General Availability after the exact-commit release gate and publication workflow pass. Its scope includes:
 
 - SQLite local single-user Runtime mode;
-- authenticated single-tenant service mode using PostgreSQL and NATS JetStream;
+- authenticated PostgreSQL and NATS JetStream service mode;
+- multi-tenant SaaS identity, memberships, quotas and tenant-isolated Runtime APIs;
+- billing plans, subscriptions, entitlements, append-only usage and an idempotent Stripe reference adapter;
 - durable Session, Workflow, Agent, Memory, Lock, Git, Provider, Tool and event state;
 - CLI, Ratatui TUI and VS Code clients as stateless Runtime adapters;
-- Linux production MCP/plugin sandbox using bubblewrap.
+- Linux native MCP/plugin sandbox using bubblewrap;
+- portable Wasmtime plugin isolation on Linux, macOS and Windows;
+- exact-commit certification and fail-closed activation for provider, plugin, deployment and billing adapters.
 
-Release: [`v0.1.0`](../../releases/tag/v0.1.0)
+Releases:
 
-Phase 3 work for multi-tenant SaaS, billing, portable plugin isolation and adapter certification is tracked separately and must pass a new exact-commit release gate before it can expand the GA scope.
+- [`v0.2.0`](../../releases/tag/v0.2.0)
+- [`v0.1.0`](../../releases/tag/v0.1.0) — immutable original GA scope
 
 ## Requirements
 
 - Rust 1.88 or newer
 - A local filesystem for SQLite local mode
-- PostgreSQL 17+ and NATS JetStream for service mode
+- PostgreSQL 17+ and NATS JetStream for service/SaaS mode
 - Ollama only when using the `ollama` provider
 - Bubblewrap for native production MCP/plugin processes on Linux
+- Wasmtime-compatible modules for portable production plugins on macOS and Windows
 
 ## Run locally
 
@@ -98,6 +104,9 @@ cargo test --workspace --locked
 - Durable delivery is treated as at least once.
 - Provider, CLI and API adapters never access the database directly.
 - Tool and plugin execution remain default-deny.
+- Every SaaS durable row is tenant-scoped and cross-tenant access fails closed.
+- Billing providers never own entitlement state.
+- New adapters cannot activate without exact-commit certification.
 - Search, memory and vector indexes are rebuildable projections.
 - Production release evidence is bound to the exact tested commit.
 
@@ -105,7 +114,8 @@ cargo test --workspace --locked
 
 - [`PROJECT.md`](PROJECT.md): project source of truth and complete roadmap
 - [`docs/00-product/current-status.md`](docs/00-product/current-status.md): current release scope and completed gates
-- [`docs/09-release/general-availability-0.1.0.md`](docs/09-release/general-availability-0.1.0.md): GA decision
+- [`docs/09-release/general-availability-0.2.0.md`](docs/09-release/general-availability-0.2.0.md): 0.2.0 GA decision
+- [`docs/09-release/general-availability-0.1.0.md`](docs/09-release/general-availability-0.1.0.md): immutable 0.1.0 GA decision
 - [`docs/02-architecture/baseline-v1.md`](docs/02-architecture/baseline-v1.md): architecture baseline
 - [`docs/04-adr`](docs/04-adr): accepted decisions
 - [`docs/03-rfc`](docs/03-rfc): implementation contracts
