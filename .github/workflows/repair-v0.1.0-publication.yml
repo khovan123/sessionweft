@@ -1,0 +1,117 @@
+name: repair-v0.1.0-publication
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/repair-v0.1.0-publication.yml"
+      - ".github/workflows/verify-v0.1.0-publication.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: repair-v0.1.0-publication
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    if: github.repository == 'khovan123/sessionweft'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: v0.1.0
+      VERSION: 0.1.0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: v0.1.0
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/sessionweft-vscode/package-lock.json
+
+      - name: Verify tag immutability
+        run: |
+          tag_commit="$(git rev-list -n 1 "$TAG")"
+          test "$tag_commit" = "$(git rev-parse HEAD)"
+          git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null
+
+      - name: Check whether repair is required
+        id: release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "missing=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "missing=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify tagged GA source
+        if: steps.release.outputs.missing == 'true'
+        run: |
+          cargo metadata --locked --format-version 1 --no-deps >/dev/null
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+          npm ci --prefix extensions/sessionweft-vscode
+          npm run check --prefix extensions/sessionweft-vscode
+          npm run compile --prefix extensions/sessionweft-vscode
+
+      - name: Build tagged GA artifacts
+        if: steps.release.outputs.missing == 'true'
+        env:
+          RELEASE_EVIDENCE_PATH: release/evidence/ga-verified.json
+        run: |
+          tag_commit="$(git rev-parse HEAD)"
+          python3 scripts/release/materialize-evidence.py \
+            --template release/evidence/ga-0.1.0.json \
+            --output release/evidence/ga-verified.json \
+            --commit "$tag_commit"
+          cargo run -p sessionweft-release-gate --locked -- \
+            --policy release/ga-policy-0.1.0.json \
+            --evidence release/evidence/ga-verified.json \
+            --level ga
+          python3 scripts/release/generate-sbom.py \
+            --output dist/sessionweft.cdx.json \
+            --version "$VERSION" \
+            --commit "$tag_commit"
+          bash scripts/release/package.sh "$VERSION"
+          package="dist/sessionweft-vscode-${VERSION}.tar.gz"
+          tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner \
+            --exclude=node_modules \
+            -czf "$package" -C extensions/sessionweft-vscode \
+            package.json package-lock.json out media
+          sha256sum "$package" > "${package}.sha256"
+
+      - name: Attest tagged artifacts
+        if: steps.release.outputs.missing == 'true'
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*.tar.gz
+          sbom-path: dist/sessionweft.cdx.json
+
+      - name: Publish missing GitHub Release
+        if: steps.release.outputs.missing == 'true'
+        run: |
+          gh release create "$TAG" \
+            dist/*.tar.gz \
+            dist/*.sha256 \
+            dist/sessionweft.cdx.json \
+            release/evidence/ga-verified.json \
+            --verify-tag \
+            --title "SessionWeft $VERSION" \
+            --notes-file docs/09-release/general-availability-0.1.0.md
+
+      - name: Confirm release exists
+        run: gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets
