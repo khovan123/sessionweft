@@ -4,6 +4,24 @@
 
 SessionWeft is a session-first, provider-agnostic Runtime for coordinating AI agents over a shared workspace. The Runtime owns durable state; IDEs, CLIs, providers and agents act as clients or pluggable execution components.
 
+## Core product contract
+
+The durable `Session` is the product core:
+
+- every agent reads the same Session history and context;
+- switching Codex, Claude, Gemini or an IDE adapter does not create a new conversation;
+- selecting the same Session ID resumes after a client or Runtime restart;
+- agent adapters never own canonical persistent history;
+- Workflow is optional orchestration above a Session, not a prerequisite for using agents.
+
+```text
+Session owns history, context and decisions
+    ├── Codex adapter
+    ├── Claude adapter
+    ├── Gemini adapter
+    └── Antigravity IDE adapter
+```
+
 ## Status
 
 SessionWeft `0.2.0` is approved for General Availability on the exact commit that passes every release gate. The GA scope includes:
@@ -34,7 +52,7 @@ The `v0.2.0` tag is created only after CI, security, production hardening, SaaS 
 ## Run locally
 
 ```bash
-cargo run -p sessionweftd
+cargo run -p sessionweftd --bin sessionweftd
 ```
 
 The Runtime binds to `127.0.0.1:7447` and creates `sessionweft.db` by default.
@@ -65,6 +83,43 @@ cargo run -p sessionweft -- run <SESSION_ID> 1 "Hello SessionWeft"
 
 Every mutation requires the expected Session version. A stale version returns HTTP `409` instead of overwriting concurrent work.
 
+## Share one Session across agents
+
+Start a new shared Session with Codex:
+
+```bash
+cargo run -p sessionweft --bin sessionweft-agent -- run codex \
+  "Inspect this repository" \
+  --title "Repository review" \
+  --cwd .
+```
+
+Reuse the returned Session ID with Claude:
+
+```bash
+cargo run -p sessionweft --bin sessionweft-agent -- resume claude \
+  "Continue from Codex and review its conclusions" \
+  --session <SESSION_ID> \
+  --cwd .
+```
+
+Continue the same history with Gemini:
+
+```bash
+cargo run -p sessionweft --bin sessionweft-agent -- resume gemini \
+  "Find missing tests in the previous proposal" \
+  --session <SESSION_ID> \
+  --cwd .
+```
+
+Inspect or resume the durable Session later:
+
+```bash
+cargo run -p sessionweft --bin sessionweft-agent -- sessions
+cargo run -p sessionweft --bin sessionweft-agent -- history <SESSION_ID>
+cargo run -p sessionweft --bin sessionweft-agent -- context <SESSION_ID>
+```
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -77,6 +132,10 @@ Every mutation requires the expected Session version. A stale version returns HT
 | `SESSIONWEFT_SAAS_DATABASE_URL` | unset | PostgreSQL authority database for `sessionweft-saasd` |
 | `SESSIONWEFT_SAAS_BOOTSTRAP_TOKEN` | unset | Bootstrap authority token for creating the first tenant |
 | `SESSIONWEFT_REQUIRE_CERTIFIED_ADAPTERS` | release-dependent | Require a packaged exact-commit adapter certification set |
+| `SESSIONWEFT_CODEX_BIN` | `codex` | Codex CLI executable |
+| `SESSIONWEFT_CLAUDE_BIN` | `claude` | Claude Code CLI executable |
+| `SESSIONWEFT_GEMINI_BIN` | `gemini` | Gemini CLI executable |
+| `SESSIONWEFT_ANTIGRAVITY_BIN` | `antigravity-ide` | Antigravity IDE executable |
 | `RUST_LOG` | `info` | Structured log filter |
 
 Example authenticated service bind:
@@ -85,7 +144,7 @@ Example authenticated service bind:
 export SESSIONWEFT_BIND=0.0.0.0:7447
 export SESSIONWEFT_API_TOKEN='replace-with-a-secret'
 export SESSIONWEFT_DATABASE_URL='postgres://sessionweft:secret@db/sessionweft'
-cargo run -p sessionweftd
+cargo run -p sessionweftd --bin sessionweftd
 ```
 
 Then provide the same token to the CLI through `SESSIONWEFT_API_TOKEN` or `--token`.
@@ -101,7 +160,10 @@ cargo test --workspace --locked
 
 ## Architecture rules
 
-- Session identity never comes from a provider.
+- Session identity never comes from a provider or agent adapter.
+- Session history and context survive agent switching and client restart.
+- Agents never own canonical persistent state.
+- Workflow is optional and cannot replace Session ownership.
 - State and outbox records commit atomically.
 - Durable delivery is treated as at least once.
 - Provider, CLI and API adapters never access the database directly.
@@ -114,6 +176,7 @@ cargo test --workspace --locked
 ## Documentation
 
 - [`PROJECT.md`](PROJECT.md): project source of truth and complete roadmap
+- [`docs/03-rfc/shared-session-agent-core.md`](docs/03-rfc/shared-session-agent-core.md): shared Session and interchangeable agent contract
 - [`docs/00-product/current-status.md`](docs/00-product/current-status.md): current release scope and completed gates
 - [`docs/09-release/general-availability-0.2.0.md`](docs/09-release/general-availability-0.2.0.md): 0.2.0 GA decision
 - [`docs/09-release/general-availability.md`](docs/09-release/general-availability.md): 0.1.0 GA decision
