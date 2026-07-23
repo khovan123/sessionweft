@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: verify-v0.2.0-publication
@@ -142,3 +143,9 @@ jobs:
             /tmp/sessionweft-release/*.sha256
           if-no-files-found: error
           retention-days: 90
+
+      - name: Close Phase 3 issue after verified publication
+        run: |
+          tag_commit="$(git rev-list -n 1 "$TAG")"
+          gh issue comment 66 --body "## SessionWeft 0.2.0 completed\n\n- PR #71 merged: tenant-isolated Runtime and SaaS API\n- PR #73 merged: exact-commit certified adapter activation\n- PR #74 merged: 0.2.0 GA policy, evidence and publication chain\n- Exact release commit: \`$tag_commit\`\n- Stable tag and release: \`$TAG\`\n- Required exact-commit gates: passed\n- Runtime and VS Code checksums: verified\n- CycloneDX SBOM and GA evidence: verified\n- Packaged adapter manifests, activation policy and production certifications: verified\n- Publication verification receipt: uploaded\n\nPhase 3 exit criteria are satisfied."
+          gh issue close 66 --reason completed
