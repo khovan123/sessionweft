@@ -1,0 +1,38 @@
+name: pr73-lockfile
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    if: github.event_name == 'workflow_dispatch' || github.head_ref == 'feature/certified-adapter-activation'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/certified-adapter-activation
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@1.88.0
+      - name: Generate complete lockfile
+        run: |
+          cargo generate-lockfile
+          cargo metadata --locked --format-version 1 --no-deps >/dev/null
+      - name: Commit lockfile only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git diff --quiet -- Cargo.lock; then
+            echo "Cargo.lock already current"
+            exit 0
+          fi
+          git config user.name sessionweft-automation
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add Cargo.lock
+          git commit -m "build: refresh adapter activation lockfile"
+          git push origin HEAD:feature/certified-adapter-activation
