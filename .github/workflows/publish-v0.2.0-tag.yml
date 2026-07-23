@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  actions: read
+  actions: write
   contents: write
 
 concurrency:
@@ -20,7 +20,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  tag:
+  tag-and-release:
     if: >-
       github.repository == 'khovan123/sessionweft' &&
       (
@@ -35,15 +35,16 @@ jobs:
         )
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
-      TARGET_COMMIT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      CANDIDATE_COMMIT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       TAG: v0.2.0
+      VERSION: 0.2.0
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TARGET_COMMIT }}
+          ref: ${{ env.CANDIDATE_COMMIT }}
           fetch-depth: 0
 
       - name: Validate immutable publication authorization
@@ -76,6 +77,18 @@ jobs:
           if set(marker.get('required_exact_commit_gates', [])) != required:
               raise SystemExit('publication marker exact-commit gate set is incomplete')
           PY
+
+      - name: Resolve immutable release commit
+        run: |
+          if existing="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq .object.sha 2>/dev/null)"; then
+            echo "TARGET_COMMIT=$existing" >> "$GITHUB_ENV"
+            echo "TAG_EXISTS=true" >> "$GITHUB_ENV"
+            echo "$TAG already exists at immutable commit $existing"
+          else
+            echo "TARGET_COMMIT=$CANDIDATE_COMMIT" >> "$GITHUB_ENV"
+            echo "TAG_EXISTS=false" >> "$GITHUB_ENV"
+            echo "$TAG will be created at qualified commit $CANDIDATE_COMMIT"
+          fi
 
       - name: Require verified v0.1.0 publication
         run: |
@@ -159,18 +172,68 @@ jobs:
             fi
           done
 
-      - name: Verify main still identifies the tested commit
+      - name: Verify main still identifies a new tag candidate
+        if: env.TAG_EXISTS != 'true'
         run: |
           main_commit="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
           test "$main_commit" = "$TARGET_COMMIT"
 
       - name: Create immutable v0.2.0 tag
+        if: env.TAG_EXISTS != 'true'
         run: |
-          if existing="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" --jq .object.sha 2>/dev/null)"; then
-            test "$existing" = "$TARGET_COMMIT"
-            echo "$TAG already identifies the exact tested commit"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f ref="refs/tags/${TAG}" \
+            -f sha="$TARGET_COMMIT" >/dev/null
+
+      - name: Dispatch release workflow when publication is missing
+        id: dispatch
+        run: |
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "required=false" >> "$GITHUB_OUTPUT"
+            echo "$TAG GitHub Release already exists"
           else
-            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
-              -f ref="refs/tags/${TAG}" \
-              -f sha="$TARGET_COMMIT" >/dev/null
+            echo "required=true" >> "$GITHUB_OUTPUT"
+            gh workflow run release.yml \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref "$TAG" \
+              -f version="$VERSION"
           fi
+
+      - name: Wait for stable release publication
+        run: |
+          for attempt in $(seq 1 180); do
+            if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+                --json tagName,isDraft,isPrerelease,assets > /tmp/v0.2.0-release.json 2>/dev/null; then
+              python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          release = json.loads(Path('/tmp/v0.2.0-release.json').read_text())
+          if release['tagName'] != 'v0.2.0' or release['isDraft'] or release['isPrerelease']:
+              raise SystemExit('v0.2.0 is not a published stable release')
+          names = {asset['name'] for asset in release['assets']}
+          required = {'sessionweft.cdx.json', 'verified.json', 'activation.json'}
+          if not required.issubset(names):
+              raise SystemExit(f'v0.2.0 publication assets are incomplete: {sorted(names)}')
+          print(f'v0.2.0 stable release contains {len(names)} assets')
+          PY
+              exit 0
+            fi
+
+            gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/runs?per_page=20" \
+              > /tmp/release-runs.json
+            state="$(jq -r --arg sha "$TARGET_COMMIT" \
+              '[.workflow_runs[] | select(.head_sha == $sha and .event == "workflow_dispatch")][0] | if . == null then "missing" else (.status + ":" + (.conclusion // "")) end' \
+              /tmp/release-runs.json)"
+            case "$state" in
+              completed:success) ;;
+              completed:*)
+                echo "release workflow failed for $TARGET_COMMIT: $state" >&2
+                exit 1
+                ;;
+              *) echo "waiting for release workflow: $state" ;;
+            esac
+            sleep 20
+          done
+          echo "v0.2.0 release was not published before timeout" >&2
+          exit 1
