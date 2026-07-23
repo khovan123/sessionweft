@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "release": "0.2.0",
+  "tag": "v0.2.0",
+  "status": "approved",
+  "publish_from": "main",
+  "immutable": true,
+  "required_exact_commit_gates": [
+    "ci",
+    "security-supply-chain",
+    "service-mode",
+    "production-hardening",
+    "saas-runtime",
+    "phase3-qualification",
+    "ga-approval"
+  ],
+  "notes": "Publication is authorized only after every listed workflow succeeds for the same main-branch commit. An existing tag may never be moved."
+}
