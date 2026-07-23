@@ -2877,6 +2877,7 @@ dependencies = [
  "async-trait",
  "reqwest 0.12.28",
  "serde",
+ "sessionweft-adapter-certification",
  "sessionweft-core",
  "thiserror 2.0.19",
  "tokio",

@@ -3,12 +3,21 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
+use sessionweft_adapter_certification::{AdapterKind, require_compiled_adapter};
 use sessionweft_core::{MessageRole, ProviderRequest, ProviderResponse, ProviderUsage};
 use thiserror::Error;
 
 #[async_trait]
 pub trait Provider: Send + Sync {
     fn name(&self) -> &'static str;
+
+    fn adapter_id(&self) -> &'static str {
+        self.name()
+    }
+
+    fn adapter_version(&self) -> &'static str {
+        "1.0.0"
+    }
 
     async fn complete(&self, request: ProviderRequest) -> Result<ProviderResponse, ProviderError>;
 }
@@ -24,12 +33,27 @@ impl ProviderRegistry {
         Self::default()
     }
 
+    pub fn try_register<P>(&mut self, provider: P) -> Result<(), ProviderError>
+    where
+        P: Provider + 'static,
+    {
+        require_compiled_adapter(
+            provider.adapter_id(),
+            provider.adapter_version(),
+            AdapterKind::Provider,
+        )
+        .map_err(|error| ProviderError::Certification(error.to_string()))?;
+        self.providers
+            .insert(provider.name().to_owned(), Arc::new(provider));
+        Ok(())
+    }
+
     pub fn register<P>(&mut self, provider: P)
     where
         P: Provider + 'static,
     {
-        self.providers
-            .insert(provider.name().to_owned(), Arc::new(provider));
+        self.try_register(provider)
+            .expect("provider adapter must be certified for this Runtime build");
     }
 
     #[must_use]
@@ -52,6 +76,10 @@ pub struct EchoProvider;
 impl Provider for EchoProvider {
     fn name(&self) -> &'static str {
         "echo"
+    }
+
+    fn adapter_id(&self) -> &'static str {
+        "echo-provider"
     }
 
     async fn complete(&self, request: ProviderRequest) -> Result<ProviderResponse, ProviderError> {
@@ -94,6 +122,10 @@ impl OllamaProvider {
 impl Provider for OllamaProvider {
     fn name(&self) -> &'static str {
         "ollama"
+    }
+
+    fn adapter_id(&self) -> &'static str {
+        "ollama-provider"
     }
 
     async fn complete(&self, request: ProviderRequest) -> Result<ProviderResponse, ProviderError> {
@@ -184,6 +216,8 @@ pub enum ProviderError {
     InvalidResponse(String),
     #[error("provider is not registered: {0}")]
     NotRegistered(String),
+    #[error("provider adapter certification failed: {0}")]
+    Certification(String),
 }
 
 #[cfg(test)]
@@ -213,5 +247,14 @@ mod tests {
         let mut registry = ProviderRegistry::new();
         registry.register(EchoProvider);
         assert_eq!(registry.names(), vec!["echo"]);
+    }
+
+    #[test]
+    fn production_provider_ids_match_release_manifests() {
+        assert_eq!(EchoProvider.adapter_id(), "echo-provider");
+        let ollama = OllamaProvider::new("http://127.0.0.1:11434", Duration::from_secs(1))
+            .expect("provider");
+        assert_eq!(ollama.adapter_id(), "ollama-provider");
+        assert_eq!(ollama.adapter_version(), "1.0.0");
     }
 }
