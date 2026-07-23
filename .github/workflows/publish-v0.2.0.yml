@@ -1,0 +1,147 @@
+name: publish-v0.2.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "release/publication/v0.2.0.json"
+      - ".github/workflows/publish-v0.2.0.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  attestations: write
+  artifact-metadata: write
+
+concurrency:
+  group: publish-v0.2.0
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'khovan123/sessionweft' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      VERSION: 0.2.0
+      TAG: v0.2.0
+      GH_TOKEN: ${{ github.token }}
+      SESSIONWEFT_BUILD_COMMIT: ${{ github.sha }}
+      RELEASE_POLICY_PATH: release/ga-policy-0.2.0.json
+      RELEASE_EVIDENCE_PATH: release/evidence/ga-verified-0.2.0.json
+      RELEASE_GATE_LEVEL: ga
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: extensions/sessionweft-vscode/package-lock.json
+      - name: Validate immutable publication authorization
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          marker = json.loads(Path('release/publication/v0.2.0.json').read_text())
+          expected = {
+              'release': '0.2.0',
+              'tag': 'v0.2.0',
+              'status': 'approved',
+              'publish_from': 'main',
+              'immutable': True,
+          }
+          for key, value in expected.items():
+              if marker.get(key) != value:
+                  raise SystemExit(f'invalid publication marker {key}: {marker.get(key)!r}')
+          if 'v0.1.0' not in marker.get('preserves', []):
+              raise SystemExit('v0.2.0 publication must preserve immutable v0.1.0')
+          PY
+      - name: Verify exact release source
+        run: |
+          cargo metadata --locked --format-version 1 --no-deps >/dev/null
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+          npm ci --prefix extensions/sessionweft-vscode
+          npm run check --prefix extensions/sessionweft-vscode
+          npm run compile --prefix extensions/sessionweft-vscode
+      - name: Materialize adapter and GA evidence
+        run: |
+          python3 scripts/release/materialize-adapter-certifications.py \
+            --manifests release/adapters/manifests \
+            --output release/adapters/verified \
+            --commit "$GITHUB_SHA"
+          cargo run -p sessionweft-adapter-certification --locked -- \
+            release/adapters/manifests release/adapters/verified .
+          python3 scripts/release/materialize-evidence.py \
+            --template release/evidence/ga-0.2.0.json \
+            --output "$RELEASE_EVIDENCE_PATH" \
+            --commit "$GITHUB_SHA"
+          cargo run -p sessionweft-release-gate --locked -- \
+            --policy "$RELEASE_POLICY_PATH" \
+            --evidence "$RELEASE_EVIDENCE_PATH" \
+            --level ga
+      - name: Generate SBOM and release packages
+        run: |
+          python3 scripts/release/generate-sbom.py \
+            --output dist/sessionweft.cdx.json \
+            --version "$VERSION" \
+            --commit "$GITHUB_SHA"
+          python3 -m json.tool dist/sessionweft.cdx.json >/dev/null
+          bash scripts/release/package.sh "$VERSION"
+          package="dist/sessionweft-vscode-${VERSION}.tar.gz"
+          tar --sort=name --mtime='UTC 2026-01-01' --owner=0 --group=0 --numeric-owner \
+            --exclude=node_modules \
+            -czf "$package" -C extensions/sessionweft-vscode \
+            package.json package-lock.json out media
+          sha256sum "$package" > "${package}.sha256"
+      - name: Create immutable release tag
+        run: |
+          git config user.name sessionweft-release
+          git config user.email release@sessionweft.invalid
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git fetch origin "refs/tags/$TAG:refs/tags/$TAG"
+            tagged_commit="$(git rev-list -n 1 "$TAG")"
+            test "$tagged_commit" = "$GITHUB_SHA" || {
+              echo "$TAG already points to $tagged_commit, expected $GITHUB_SHA" >&2
+              exit 1
+            }
+          else
+            git tag -a "$TAG" "$GITHUB_SHA" -m "SessionWeft $VERSION General Availability"
+            git push origin "$TAG"
+          fi
+      - name: Generate provenance and SBOM attestation
+        uses: actions/attest@v4
+        with:
+          subject-path: dist/*.tar.gz
+          sbom-path: dist/sessionweft.cdx.json
+      - name: Publish immutable GitHub release assets
+        run: |
+          assets=(dist/*.tar.gz dist/*.sha256 dist/sessionweft.cdx.json "$RELEASE_EVIDENCE_PATH" release/adapters/verified/*.json)
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${assets[@]}" --clobber
+          else
+            gh release create "$TAG" "${assets[@]}" \
+              --verify-tag \
+              --title "SessionWeft $VERSION" \
+              --notes-file docs/09-release/general-availability-0.2.0.md
+          fi
+      - name: Upload publication evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sessionweft-v0.2.0-publication
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+            dist/sessionweft.cdx.json
+            release/evidence/ga-verified-0.2.0.json
+            release/adapters/verified/*.json
+          if-no-files-found: error
+          retention-days: 90
