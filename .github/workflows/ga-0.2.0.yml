@@ -1,0 +1,91 @@
+name: ga-0.2.0
+
+on:
+  pull_request:
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "crates/**"
+      - "apps/**"
+      - "release/ga-policy-0.2.0.json"
+      - "release/evidence/ga-0.2.0.json"
+      - "release/publication/v0.2.0.json"
+      - "release/adapters/**"
+      - "scripts/release/**"
+      - "docs/09-release/general-availability-0.2.0.md"
+      - ".github/workflows/ga-0.2.0.yml"
+      - ".github/workflows/publish-v0.2.0.yml"
+      - ".github/workflows/verify-v0.2.0-publication.yml"
+  push:
+    branches: [main]
+    paths:
+      - "release/ga-policy-0.2.0.json"
+      - "release/evidence/ga-0.2.0.json"
+      - "release/publication/v0.2.0.json"
+      - "release/adapters/**"
+      - "scripts/release/**"
+      - "docs/09-release/general-availability-0.2.0.md"
+      - ".github/workflows/ga-0.2.0.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ga-0.2.0-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  exact-commit-ga:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SESSIONWEFT_BUILD_COMMIT: ${{ github.sha }}
+      RELEASE_POLICY_PATH: release/ga-policy-0.2.0.json
+      RELEASE_EVIDENCE_PATH: release/evidence/ga-verified-0.2.0.json
+      RELEASE_GATE_LEVEL: ga
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@1.88.0
+        with:
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Verify locked source
+        run: |
+          cargo metadata --locked --format-version 1 --no-deps >/dev/null
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+      - name: Materialize and validate adapter certifications
+        run: |
+          python3 scripts/release/materialize-adapter-certifications.py \
+            --manifests release/adapters/manifests \
+            --output release/adapters/verified \
+            --commit "$GITHUB_SHA"
+          cargo run -p sessionweft-adapter-certification --locked -- \
+            release/adapters/manifests release/adapters/verified .
+      - name: Materialize exact-commit GA evidence
+        run: |
+          python3 scripts/release/materialize-evidence.py \
+            --template release/evidence/ga-0.2.0.json \
+            --output "$RELEASE_EVIDENCE_PATH" \
+            --commit "$GITHUB_SHA"
+          cargo run -p sessionweft-release-gate --locked -- \
+            --policy "$RELEASE_POLICY_PATH" \
+            --evidence "$RELEASE_EVIDENCE_PATH" \
+            --level ga
+      - name: Build qualified release package
+        run: bash scripts/release/package.sh 0.2.0
+      - name: Upload exact-commit qualification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sessionweft-v0.2.0-ga-${{ github.sha }}
+          path: |
+            release/evidence/ga-verified-0.2.0.json
+            release/adapters/verified/*.json
+            dist/sessionweft-0.2.0-*.tar.gz
+            dist/sessionweft-0.2.0-*.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 90
