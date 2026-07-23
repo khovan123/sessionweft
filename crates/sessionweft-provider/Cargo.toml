@@ -10,6 +10,7 @@ repository.workspace = true
 async-trait.workspace = true
 reqwest.workspace = true
 serde.workspace = true
+sessionweft-adapter-certification = { path = "../sessionweft-adapter-certification" }
 sessionweft-core = { path = "../sessionweft-core" }
 thiserror.workspace = true
 
