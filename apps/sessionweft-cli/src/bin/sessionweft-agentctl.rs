@@ -1,3 +1,4 @@
+#[allow(dead_code, clippy::if_same_then_else)]
 #[path = "support/session_cli_display.rs"]
 mod session_cli_display;
 
