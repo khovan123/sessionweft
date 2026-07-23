@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "issue": 66,
+  "release": "0.2.0",
+  "completion_workflow": ".github/workflows/verify-v0.2.0-publication.yml",
+  "close_reason": "completed",
+  "required_conditions": [
+    "stable_v0.2.0_release",
+    "runtime_and_vscode_checksums_verified",
+    "cyclonedx_sbom_verified",
+    "exact_commit_ga_evidence_verified",
+    "adapter_activation_policy_verified",
+    "production_adapter_certifications_verified",
+    "packaged_runtime_manifest_verified",
+    "publication_verification_receipt_uploaded"
+  ]
+}
