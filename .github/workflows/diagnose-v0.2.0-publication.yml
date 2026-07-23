@@ -1,0 +1,55 @@
+name: diagnose-v0.2.0-publication
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/diagnose-v0.2.0-publication.yml"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Query main publication state
+        run: |
+          set -euo pipefail
+          mkdir -p diagnostics
+          main_commit="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/main" --jq .object.sha)"
+          printf '%s\n' "$main_commit" > diagnostics/main-commit.txt
+
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${main_commit}&per_page=100" \
+            > diagnostics/runs.json
+          jq '[.workflow_runs[] | {name, status, conclusion, run_number, event, head_sha, html_url}]' \
+            diagnostics/runs.json > diagnostics/run-summary.json
+
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/v0.2.0" > diagnostics/tag.json 2> diagnostics/tag.stderr; then
+            echo present > diagnostics/tag-status.txt
+          else
+            echo missing > diagnostics/tag-status.txt
+          fi
+
+          if gh release view v0.2.0 --json tagName,isDraft,isPrerelease,targetCommitish,assets \
+              > diagnostics/release.json 2> diagnostics/release.stderr; then
+            echo present > diagnostics/release-status.txt
+          else
+            echo missing > diagnostics/release-status.txt
+          fi
+
+          cat diagnostics/main-commit.txt
+          cat diagnostics/run-summary.json
+          cat diagnostics/tag-status.txt
+          cat diagnostics/release-status.txt
+
+      - name: Upload diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: v0.2.0-publication-diagnostics
+          path: diagnostics
+          if-no-files-found: error
+          retention-days: 3
