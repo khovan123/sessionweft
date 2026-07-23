@@ -1,0 +1,126 @@
+{
+  "schema_version": 1,
+  "product": "SessionWeft",
+  "release": "0.2.0",
+  "commit": "TBD",
+  "generated_at": "2026-07-23T00:00:00Z",
+  "gates": {
+    "rust_quality": {
+      "status": "passed",
+      "evidence": [".github/workflows/ci.yml", ".github/workflows/production-hardening.yml"],
+      "notes": "Locked dependency graph, rustfmt, Clippy with warnings denied and workspace tests are release blocking."
+    },
+    "service_mode_chaos": {
+      "status": "passed",
+      "evidence": [".github/workflows/production-hardening.yml", "scripts/chaos/service-mode-chaos.sh", "crates/sessionweft-service-postgres/tests/service_mode.rs"],
+      "notes": "PostgreSQL and JetStream restart, duplicate delivery and competing ownership are release blocking."
+    },
+    "client_reconnect": {
+      "status": "passed",
+      "evidence": ["crates/sessionweft-client-protocol-sqlite/tests/restart.rs", "crates/sessionweft-client-protocol/tests/pty.rs"],
+      "notes": "Event cursor restart and Runtime-owned PTY disconnect behavior are tested."
+    },
+    "workspace_capacity": {
+      "status": "passed",
+      "evidence": ["crates/sessionweft-workspace-intelligence/tests/benchmark.rs", "scripts/bench/workspace-capacity.sh"],
+      "notes": "Incremental indexing and release capacity are bounded."
+    },
+    "backup_restore": {
+      "status": "passed",
+      "evidence": ["scripts/drills/postgres-backup-restore.sh", "docs/10-deployment/disaster-recovery.md"],
+      "notes": "A real PostgreSQL backup and restore drill is part of production hardening."
+    },
+    "migration_compatibility": {
+      "status": "passed",
+      "evidence": ["scripts/drills/migration-compatibility.sh", "docs/10-deployment/upgrade-and-rollback.md"],
+      "notes": "Upgrade compatibility and rollback checks are scripted."
+    },
+    "security_audit": {
+      "status": "passed",
+      "evidence": [".github/workflows/security-supply-chain.yml", "deny.toml", "docs/08-security/threat-model.md", "docs/09-release/general-availability-0.2.0.md"],
+      "notes": "RustSec, source/license policy, tenant boundaries and adapter activation are release blocking."
+    },
+    "secret_leakage": {
+      "status": "passed",
+      "evidence": ["scripts/security/scan-secrets.sh", "crates/sessionweft-mcp/tests/malicious.rs"],
+      "notes": "Tracked-source secret patterns and malicious plugin environment probes are tested."
+    },
+    "plugin_isolation": {
+      "status": "passed",
+      "evidence": ["crates/sessionweft-mcp/tests/malicious.rs", "crates/sessionweft-plugin-wasm", "docs/05-specs/mcp-plugin-isolation.md"],
+      "notes": "Linux native isolation and portable Wasmtime isolation are both qualified."
+    },
+    "tenant_isolation": {
+      "status": "passed",
+      "evidence": [".github/workflows/saas-runtime.yml", ".github/workflows/phase3-qualification.yml", "crates/sessionweft-saas-postgres/tests/tenant_isolation.rs"],
+      "notes": "Tenant-owned identities, schema isolation, RLS authority, quotas and cross-tenant not-found semantics are tested."
+    },
+    "billing_idempotence": {
+      "status": "passed",
+      "evidence": ["crates/sessionweft-billing", "crates/sessionweft-billing-stripe", "crates/sessionweft-saas-postgres/tests/tenant_isolation.rs"],
+      "notes": "Usage, webhook and Stripe operations are idempotent and entitlement state remains Runtime-owned."
+    },
+    "portable_sandbox": {
+      "status": "passed",
+      "evidence": [".github/workflows/phase3-qualification.yml", "crates/sessionweft-plugin-wasm"],
+      "notes": "The import-free Wasmtime boundary is tested on Ubuntu, macOS and Windows with fuel, epoch, memory and output bounds."
+    },
+    "adapter_certification": {
+      "status": "passed",
+      "evidence": ["crates/sessionweft-adapter-certification", "release/adapters/activation.json", "release/adapters/manifests", "scripts/release/materialize-adapter-certifications.py"],
+      "notes": "Provider, plugin, deployment and billing adapters fail closed unless certification matches the exact build commit."
+    },
+    "sbom": {
+      "status": "passed",
+      "evidence": [".github/workflows/security-supply-chain.yml", "scripts/release/generate-sbom.py"],
+      "notes": "A CycloneDX SBOM is generated from the locked Rust and VS Code manifests."
+    },
+    "release_artifacts": {
+      "status": "passed",
+      "evidence": [".github/workflows/publish-v0.2.0.yml", "scripts/release/package.sh", "docs/09-release/install-upgrade.md"],
+      "notes": "Checksummed archives, exact-commit certifications, SBOM and provenance attestations are required."
+    },
+    "observability": {
+      "status": "passed",
+      "evidence": ["deploy/observability/prometheus-alerts.yml", "deploy/observability/sessionweft-dashboard.json", "docs/10-deployment/alerts-and-runbooks.md"],
+      "notes": "Release-blocking alerts and dashboards cover Runtime, scheduler, outbox, locks, providers and consumers."
+    },
+    "runbooks": {
+      "status": "passed",
+      "evidence": ["docs/10-deployment/alerts-and-runbooks.md", "docs/10-deployment/disaster-recovery.md", "docs/10-deployment/upgrade-and-rollback.md", "docs/09-release/general-availability-0.2.0.md"],
+      "notes": "Operational response, recovery, rollback, SaaS and adapter activation constraints are recorded."
+    }
+  },
+  "security_findings": {
+    "critical_open": 0,
+    "high_open": 0,
+    "medium_open": 0,
+    "low_open": 0
+  },
+  "signoffs": [
+    {
+      "role": "architecture",
+      "reviewer": "khovan123",
+      "human": true,
+      "decision": "approved_for_ga",
+      "reviewed_at": "2026-07-23T00:00:00Z",
+      "evidence": ["docs/09-release/ga-authorization.md", "docs/09-release/general-availability-0.2.0.md", "docs/02-architecture/baseline-v1.md"]
+    },
+    {
+      "role": "security",
+      "reviewer": "khovan123",
+      "human": true,
+      "decision": "approved_for_ga",
+      "reviewed_at": "2026-07-23T00:00:00Z",
+      "evidence": ["docs/09-release/ga-authorization.md", "docs/09-release/general-availability-0.2.0.md", "docs/08-security/threat-model.md"]
+    },
+    {
+      "role": "operations",
+      "reviewer": "khovan123",
+      "human": true,
+      "decision": "approved_for_ga",
+      "reviewed_at": "2026-07-23T00:00:00Z",
+      "evidence": ["docs/09-release/ga-authorization.md", "docs/09-release/general-availability-0.2.0.md", "docs/10-deployment/service-mode-operations.md"]
+    }
+  ]
+}
