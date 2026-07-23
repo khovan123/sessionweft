@@ -3138,6 +3138,7 @@ dependencies = [
  "sessionweft-scheduler-sqlite",
  "sessionweft-storage",
  "sessionweft-task-runner",
+ "sqlx",
  "tokio",
  "tokio-util",
  "tower-http",
