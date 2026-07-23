@@ -1,9 +1,15 @@
 name: publish-v0.2.0-tag
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "release/publication/v0.2.0.json"
+      - ".github/workflows/publish-v0.2.0-tag.yml"
   workflow_run:
     workflows: ["ga-approval"]
     types: [completed]
+  workflow_dispatch:
 
 permissions:
   actions: read
@@ -17,15 +23,60 @@ jobs:
   tag:
     if: >-
       github.repository == 'khovan123/sessionweft' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main'
+      (
+        (
+          github.event_name == 'workflow_run' &&
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main'
+        ) ||
+        (
+          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          github.ref == 'refs/heads/main'
+        )
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       GH_TOKEN: ${{ github.token }}
-      TARGET_COMMIT: ${{ github.event.workflow_run.head_sha }}
+      TARGET_COMMIT: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       TAG: v0.2.0
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_COMMIT }}
+          fetch-depth: 0
+
+      - name: Validate immutable publication authorization
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          marker = json.loads(Path('release/publication/v0.2.0.json').read_text())
+          expected = {
+              'schema_version': 1,
+              'release': '0.2.0',
+              'tag': 'v0.2.0',
+              'status': 'approved',
+              'publish_from': 'main',
+              'immutable': True,
+          }
+          for key, value in expected.items():
+              if marker.get(key) != value:
+                  raise SystemExit(f'invalid publication marker {key}: {marker.get(key)!r}')
+          required = {
+              'ci',
+              'security-supply-chain',
+              'service-mode',
+              'production-hardening',
+              'saas-runtime',
+              'phase3-qualification',
+              'ga-approval',
+          }
+          if set(marker.get('required_exact_commit_gates', [])) != required:
+              raise SystemExit('publication marker exact-commit gate set is incomplete')
+          PY
+
       - name: Require verified v0.1.0 publication
         run: |
           gh release view v0.1.0 --json tagName,isDraft,isPrerelease,assets > /tmp/v0.1.0-release.json
@@ -49,7 +100,7 @@ jobs:
 
       - name: Require every exact-commit release gate
         run: |
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 90); do
             gh api "repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_COMMIT}&per_page=100" > /tmp/runs.json
             if python3 - <<'PY'
           import json
@@ -57,38 +108,38 @@ jobs:
           from pathlib import Path
 
           required = {
-              "ci",
-              "security-supply-chain",
-              "service-mode",
-              "production-hardening",
-              "saas-runtime",
-              "phase3-qualification",
-              "ga-approval",
+              'ci',
+              'security-supply-chain',
+              'service-mode',
+              'production-hardening',
+              'saas-runtime',
+              'phase3-qualification',
+              'ga-approval',
           }
-          runs = json.loads(Path('/tmp/runs.json').read_text())["workflow_runs"]
+          runs = json.loads(Path('/tmp/runs.json').read_text())['workflow_runs']
           latest = {}
           for run in runs:
-              name = run["name"]
+              name = run['name']
               if name not in required:
                   continue
               current = latest.get(name)
-              if current is None or run["run_number"] > current["run_number"]:
+              if current is None or run['run_number'] > current['run_number']:
                   latest[name] = run
           missing = required - latest.keys()
           failed = {
-              name: run.get("conclusion")
+              name: run.get('conclusion')
               for name, run in latest.items()
-              if run.get("status") == "completed" and run.get("conclusion") != "success"
+              if run.get('status') == 'completed' and run.get('conclusion') != 'success'
           }
           pending = {
-              name: run.get("status")
+              name: run.get('status')
               for name, run in latest.items()
-              if run.get("status") != "completed"
+              if run.get('status') != 'completed'
           }
           if failed:
-              raise SystemExit(f"exact-commit release gate failed: {failed}")
+              raise SystemExit(f'exact-commit release gate failed: {failed}')
           if missing or pending:
-              print(f"waiting for exact-commit gates; missing={sorted(missing)} pending={pending}")
+              print(f'waiting for exact-commit gates; missing={sorted(missing)} pending={pending}')
               raise SystemExit(75)
           print(f"all exact-commit release gates passed for {os.environ['TARGET_COMMIT']}")
           PY
@@ -101,7 +152,7 @@ jobs:
               fi
               sleep 20
             fi
-            if [[ "$attempt" -eq 60 ]]; then
+            if [[ "$attempt" -eq 90 ]]; then
               echo "exact-commit gates did not finish before timeout" >&2
               exit 1
             fi
