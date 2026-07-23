@@ -132,12 +132,7 @@ fn try_before(flavor: CliFlavor, args: &[String]) -> anyhow::Result<DisplayPlan>
         )?;
         eprint!(
             "{}",
-            render_session_card(
-                "SESSION",
-                &session,
-                Some(&parsed.command),
-                agent.as_deref(),
-            )
+            render_session_card("SESSION", &session, Some(&parsed.command), agent.as_deref(),)
         );
     } else if matches!(parsed.command.as_str(), "run" | "resume") {
         eprint!(
@@ -169,12 +164,7 @@ fn one_shot_target(parsed: &ParsedArgs) -> (Option<String>, Option<String>, Opti
                 .or_else(|| Some("Shared agent session".to_owned())),
             true,
         ),
-        "history" | "context" => (
-            parsed.positionals.first().cloned(),
-            None,
-            None,
-            false,
-        ),
+        "history" | "context" => (parsed.positionals.first().cloned(), None, None, false),
         _ => (None, None, None, false),
     }
 }
@@ -263,9 +253,8 @@ fn request_json(
         let value = if bytes.is_empty() {
             Value::Null
         } else {
-            serde_json::from_slice(&bytes).unwrap_or_else(|_| {
-                Value::String(String::from_utf8_lossy(&bytes).into_owned())
-            })
+            serde_json::from_slice(&bytes)
+                .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(&bytes).into_owned()))
         };
         if !status.is_success() {
             bail!("Runtime returned HTTP {status}: {value}");
@@ -283,7 +272,10 @@ fn print_sessions(value: &Value) -> anyhow::Result<()> {
         println!("  No durable Sessions found.");
         return Ok(());
     }
-    println!("  {:<3} {:<36} {:>7} {:>8}  TITLE", "#", "ID", "VERSION", "MESSAGES");
+    println!(
+        "  {:<3} {:<36} {:>7} {:>8}  TITLE",
+        "#", "ID", "VERSION", "MESSAGES"
+    );
     for (index, session) in sessions.iter().enumerate() {
         let id = field_string(session, "id").unwrap_or("-");
         let title = field_string(session, "title").unwrap_or("Untitled Session");
