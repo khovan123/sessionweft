@@ -8,17 +8,22 @@ on:
       - ".github/workflows/materialize-pr73-lockfile.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   lockfile:
     if: github.head_ref == 'feature/certified-adapter-activation'
     runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: feature/certified-adapter-activation
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
       - name: Add exact internal dependency
+        id: patch
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -47,12 +52,30 @@ jobs:
            "thiserror 2.0.19",
            "tokio",
           ]'''
-          if content.count(old) != 1:
-              raise SystemExit('expected exactly one sessionweft-provider lock entry')
-          path.write_text(content.replace(old, new), encoding='utf-8')
+          if new in content:
+              Path('/tmp/changed').write_text('false')
+          else:
+              if content.count(old) != 1:
+                  raise SystemExit('expected exactly one sessionweft-provider lock entry')
+              path.write_text(content.replace(old, new), encoding='utf-8')
+              Path('/tmp/changed').write_text('true')
           PY
+          echo "changed=$(cat /tmp/changed)" >> "$GITHUB_OUTPUT"
           git diff --check
           git diff -- Cargo.lock
+      - name: Commit lockfile through guarded Contents API
+        if: steps.patch.outputs.changed == 'true'
+        run: |
+          expected="${{ github.event.pull_request.head.sha }}"
+          remote="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/heads/${BRANCH}" --jq .object.sha)"
+          test "$remote" = "$expected"
+          blob="$(git rev-parse HEAD:Cargo.lock)"
+          content="$(base64 -w0 Cargo.lock)"
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/Cargo.lock" \
+            -f message='build(provider): refresh lockfile for certification guard' \
+            -f content="$content" \
+            -f sha="$blob" \
+            -f branch="$BRANCH" >/dev/null
       - name: Upload complete lockfile
         uses: actions/upload-artifact@v4
         with:
