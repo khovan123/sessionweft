@@ -145,30 +145,18 @@ impl RuntimeClient {
     }
 
     async fn create_session(&self, title: &str) -> anyhow::Result<Value> {
-        self.request(
-            Method::POST,
-            "/v1/sessions",
-            Some(json!({"title": title})),
-        )
-        .await
+        self.request(Method::POST, "/v1/sessions", Some(json!({"title": title})))
+            .await
     }
 
     async fn list_sessions(&self, limit: u32) -> anyhow::Result<Value> {
-        self.request(
-            Method::GET,
-            &format!("/v1/sessions?limit={limit}"),
-            None,
-        )
-        .await
+        self.request(Method::GET, &format!("/v1/sessions?limit={limit}"), None)
+            .await
     }
 
     async fn get_session(&self, session_id: &str) -> anyhow::Result<Value> {
-        self.request(
-            Method::GET,
-            &format!("/v1/sessions/{session_id}"),
-            None,
-        )
-        .await
+        self.request(Method::GET, &format!("/v1/sessions/{session_id}"), None)
+            .await
     }
 
     async fn append_message(
