@@ -8,7 +8,7 @@ use std::{
 
 use anyhow::{Context, bail};
 use clap::Parser;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde_json::Value;
 
 #[derive(Debug, Parser)]
@@ -103,14 +103,17 @@ impl RuntimeClient {
         }
     }
 
-    fn get(&self, path: &str) -> anyhow::Result<Value> {
+    async fn get(&self, path: &str) -> anyhow::Result<Value> {
         let mut request = self.http.get(format!("{}{}", self.endpoint, path));
         if let Some(token) = self.token.as_deref() {
             request = request.bearer_auth(token);
         }
-        let response = request.send().context("reach SessionWeft Runtime")?;
+        let response = request.send().await.context("reach SessionWeft Runtime")?;
         let status = response.status();
-        let value = response.json::<Value>().context("decode Runtime response")?;
+        let value = response
+            .json::<Value>()
+            .await
+            .context("decode Runtime response")?;
         if !status.is_success() {
             bail!("SessionWeft Runtime returned HTTP {status}: {value}");
         }
@@ -118,7 +121,8 @@ impl RuntimeClient {
     }
 }
 
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let cwd = std::fs::canonicalize(&cli.cwd)
         .with_context(|| format!("resolve wrapper working directory {}", cli.cwd.display()))?;
@@ -127,11 +131,11 @@ fn main() -> anyhow::Result<()> {
 
     let mut session_id = cli.session;
     if session_id.is_none() {
-        print_sessions(&runtime.get("/v1/sessions?limit=100")?)?;
+        print_sessions(&runtime.get("/v1/sessions?limit=100").await?)?;
         session_id = prompt_session_id()?;
     }
     let selected = session_id.context("a Session ID is required")?;
-    let session = runtime.get(&format!("/v1/sessions/{selected}"))?;
+    let session = runtime.get(&format!("/v1/sessions/{selected}")).await?;
     print_session(&session, agent);
     materialize_wrapper_context(&cwd, &session, agent)?;
 
@@ -161,14 +165,16 @@ fn main() -> anyhow::Result<()> {
             continue;
         }
         if line == "/resume" {
-            print_sessions(&runtime.get("/v1/sessions?limit=100")?)?;
+            print_sessions(&runtime.get("/v1/sessions?limit=100").await?)?;
         } else if let Some(id) = line.strip_prefix("/resume ") {
-            let session = runtime.get(&format!("/v1/sessions/{}", id.trim()))?;
+            let session = runtime
+                .get(&format!("/v1/sessions/{}", id.trim()))
+                .await?;
             current = required_string(&session, "id")?;
             print_session(&session, agent);
             materialize_wrapper_context(&cwd, &session, agent)?;
         } else if line == "/session" {
-            let session = runtime.get(&format!("/v1/sessions/{current}"))?;
+            let session = runtime.get(&format!("/v1/sessions/{current}")).await?;
             print_session(&session, agent);
         } else if line == "/start" {
             return launch_native(agent, &cwd, &cli.passthrough);
