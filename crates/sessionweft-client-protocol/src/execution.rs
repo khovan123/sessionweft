@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use sessionweft_core::SessionId;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -44,7 +45,7 @@ pub enum AgentExecutionState {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AgentExecutionView {
     pub execution_id: Uuid,
-    pub session_id: Uuid,
+    pub session_id: SessionId,
     pub workflow_id: Uuid,
     pub node_id: String,
     pub agent: String,
