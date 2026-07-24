@@ -144,7 +144,12 @@ pub(super) async fn run() -> anyhow::Result<()> {
     println!("Workspace: {}", cwd.display());
     println!("Launchers:");
     for agent in AgentKind::ALL {
-        println!("  {:<18} -> {}", agent.launcher(), agent.program());
+        println!(
+            "  {:<18} -> {:<16} ({})",
+            agent.launcher(),
+            agent.program(),
+            agent.label()
+        );
     }
     println!();
     println!(
@@ -177,7 +182,7 @@ pub(super) async fn run() -> anyhow::Result<()> {
             "sessions" => print_sessions(&runtime.get("/v1/sessions?limit=100").await?)?,
             "launchers" => {
                 for agent in AgentKind::ALL {
-                    println!("{}", agent.launcher());
+                    println!("{} ({})", agent.launcher(), agent.label());
                 }
             }
             "quit" | "exit" => break,
