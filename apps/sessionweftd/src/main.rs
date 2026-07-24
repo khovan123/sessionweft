@@ -1,5 +1,6 @@
 mod client_api;
 mod control_plane_api;
+mod execution_api;
 
 use std::{collections::BTreeSet, env, net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
@@ -14,7 +15,8 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use sessionweft_client_protocol::{
-    CLIENT_PROTOCOL_VERSION, EventJournal, JournalEventTransport, PtySupervisor, discover_programs,
+    AgentExecutionSupervisor, CLIENT_PROTOCOL_VERSION, EventJournal, JournalEventTransport,
+    PtySupervisor, discover_programs,
 };
 use sessionweft_client_protocol_sqlite::SqliteClientEventJournal;
 use sessionweft_control_plane::RuntimeControlPlane;
@@ -49,6 +51,7 @@ struct AppState {
     api_token: Option<Arc<str>>,
     event_journal: Arc<SqliteClientEventJournal>,
     pty: Arc<PtySupervisor>,
+    executions: Arc<AgentExecutionSupervisor>,
 }
 
 #[tokio::main]
@@ -113,8 +116,10 @@ async fn main() -> anyhow::Result<()> {
     let workspace_root = env::var_os("SESSIONWEFT_WORKSPACE_ROOT")
         .map(PathBuf::from)
         .unwrap_or(env::current_dir().context("failed to resolve Runtime workspace root")?);
-    let configured_programs = env::var("SESSIONWEFT_PTY_PROGRAMS")
-        .unwrap_or_else(|_| "bash,sh,pwsh,powershell.exe,cmd.exe".into());
+    let configured_programs = env::var("SESSIONWEFT_PTY_PROGRAMS").unwrap_or_else(|_| {
+        "bash,sh,pwsh,powershell.exe,cmd.exe,codex,claude,gemini,fcc-claude,fcc-codex,antigravity-ide"
+            .into()
+    });
     let program_names = configured_programs
         .split(',')
         .map(str::trim)
@@ -122,16 +127,28 @@ async fn main() -> anyhow::Result<()> {
         .collect::<Vec<_>>();
     let pty = Arc::new(
         PtySupervisor::new(
-            workspace_root,
+            &workspace_root,
             discover_programs(&program_names),
             BTreeSet::from([
                 "COLORTERM".into(),
                 "LANG".into(),
                 "LC_ALL".into(),
                 "TERM".into(),
+                "SESSIONWEFT_EXECUTION_ID".into(),
+                "SESSIONWEFT_SESSION_ID".into(),
+                "SESSIONWEFT_WORKFLOW_ID".into(),
+                "SESSIONWEFT_WORKFLOW_NODE_ID".into(),
+                "SESSIONWEFT_CONTEXT_FILE".into(),
+                "SESSIONWEFT_SKILLS_DIR".into(),
+                "SESSIONWEFT_PLUGINS_DIR".into(),
+                "SESSIONWEFT_FENCING_TOKEN".into(),
             ]),
         )
         .context("failed to initialize Runtime PTY supervisor")?,
+    );
+    let executions = Arc::new(
+        AgentExecutionSupervisor::new(&workspace_root, pty.as_ref().clone())
+            .context("failed to initialize agent execution supervisor")?,
     );
 
     let local_transport = Arc::new(LocalEventTransport::new(1_024));
@@ -154,6 +171,7 @@ async fn main() -> anyhow::Result<()> {
         api_token,
         event_journal,
         pty,
+        executions,
     };
     let protected = Router::new()
         .route("/health/ready", get(readiness))
@@ -165,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/sessions/{id}/archive", post(archive_session))
         .merge(control_plane_api::routes())
         .merge(client_api::routes())
+        .merge(execution_api::routes())
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             audit_mutations,
@@ -461,12 +480,12 @@ async fn archive_session(
         .map_err(|error| ApiError::from_runtime(error, correlation_id))
 }
 
-pub(crate) fn parse_session_id(value: &str, correlation_id: Uuid) -> Result<SessionId, ApiError> {
+fn parse_session_id(value: &str, correlation_id: Uuid) -> Result<SessionId, ApiError> {
     value.parse().map_err(|_| {
         ApiError::new(
             StatusCode::BAD_REQUEST,
             "invalid_session_id",
-            "session ID must be a UUID",
+            "session id must be a UUID",
             correlation_id,
             None,
         )
@@ -475,13 +494,10 @@ pub(crate) fn parse_session_id(value: &str, correlation_id: Uuid) -> Result<Sess
 
 #[derive(Debug, Serialize)]
 struct ErrorBody {
-    protocol_version: u32,
     code: &'static str,
     message: String,
     correlation_id: Uuid,
-    retryable: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    committed_version: Option<u64>,
+    details: Option<serde_json::Value>,
 }
 
 struct ApiError {
@@ -495,94 +511,108 @@ impl ApiError {
         code: &'static str,
         message: impl Into<String>,
         correlation_id: Uuid,
-        committed_version: Option<u64>,
+        details: Option<serde_json::Value>,
     ) -> Self {
         Self {
             status,
             body: ErrorBody {
-                protocol_version: CLIENT_PROTOCOL_VERSION,
                 code,
                 message: message.into(),
                 correlation_id,
-                retryable: status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS,
-                committed_version,
+                details,
             },
         }
     }
 
     fn from_runtime(error: RuntimeError, correlation_id: Uuid) -> Self {
         match error {
-            RuntimeError::Domain(DomainError::Validation(message)) => Self::new(
+            RuntimeError::Domain(error) => Self::from_domain(error, correlation_id),
+            RuntimeError::Storage(error) => Self::from_storage(error, correlation_id),
+            RuntimeError::Provider(error) => Self::from_provider(error, correlation_id),
+        }
+    }
+
+    fn from_domain(error: DomainError, correlation_id: Uuid) -> Self {
+        match error {
+            DomainError::InvalidTitle
+            | DomainError::InvalidMessage
+            | DomainError::InvalidProvider
+            | DomainError::InvalidModel
+            | DomainError::InvalidActor => Self::new(
                 StatusCode::BAD_REQUEST,
-                "validation",
-                message,
-                correlation_id,
-                None,
-            ),
-            RuntimeError::Domain(DomainError::Conflict { expected, actual }) => Self::new(
-                StatusCode::CONFLICT,
-                "conflict",
-                format!("expected version {expected}, actual version {actual}"),
-                correlation_id,
-                None,
-            ),
-            RuntimeError::Domain(DomainError::Archived) => Self::new(
-                StatusCode::CONFLICT,
-                "session_archived",
-                "session is archived",
-                correlation_id,
-                None,
-            ),
-            RuntimeError::Storage(StorageError::Conflict { expected, actual }) => Self::new(
-                StatusCode::CONFLICT,
-                "conflict",
-                format!("expected version {expected}, actual version {actual}"),
-                correlation_id,
-                None,
-            ),
-            RuntimeError::NotFound(_) | RuntimeError::Storage(StorageError::NotFound(_)) => {
-                Self::new(
-                    StatusCode::NOT_FOUND,
-                    "not_found",
-                    "session not found",
-                    correlation_id,
-                    None,
-                )
-            }
-            RuntimeError::ProviderNotSelected => Self::new(
-                StatusCode::CONFLICT,
-                "provider_not_selected",
-                "select a provider before running the session",
-                correlation_id,
-                None,
-            ),
-            RuntimeError::Provider(ProviderError::NotRegistered(provider)) => Self::new(
-                StatusCode::BAD_REQUEST,
-                "provider_not_registered",
-                format!("provider '{provider}' is not registered"),
-                correlation_id,
-                None,
-            ),
-            RuntimeError::ProviderAfterCommit {
-                committed_version,
-                source,
-            } => Self::new(
-                StatusCode::BAD_GATEWAY,
-                "provider_failed_after_commit",
-                source.to_string(),
-                correlation_id,
-                Some(committed_version),
-            ),
-            RuntimeError::Provider(error) => Self::new(
-                StatusCode::BAD_GATEWAY,
-                "provider_error",
+                "validation_failed",
                 error.to_string(),
                 correlation_id,
                 None,
             ),
-            RuntimeError::Storage(error) => Self::new(
+            DomainError::InvalidTransition => Self::new(
+                StatusCode::CONFLICT,
+                "invalid_transition",
+                error.to_string(),
+                correlation_id,
+                None,
+            ),
+            DomainError::VersionConflict { expected, actual } => Self::new(
+                StatusCode::CONFLICT,
+                "version_conflict",
+                error.to_string(),
+                correlation_id,
+                Some(serde_json::json!({
+                    "expected": expected,
+                    "actual": actual,
+                })),
+            ),
+        }
+    }
+
+    fn from_storage(error: StorageError, correlation_id: Uuid) -> Self {
+        match error {
+            StorageError::NotFound => Self::new(
+                StatusCode::NOT_FOUND,
+                "session_not_found",
+                error.to_string(),
+                correlation_id,
+                None,
+            ),
+            StorageError::Conflict { expected, actual } => Self::new(
+                StatusCode::CONFLICT,
+                "storage_conflict",
+                error.to_string(),
+                correlation_id,
+                Some(serde_json::json!({
+                    "expected": expected,
+                    "actual": actual,
+                })),
+            ),
+            StorageError::Database(_) | StorageError::Serialization(_) => Self::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "storage_error",
+                error.to_string(),
+                correlation_id,
+                None,
+            ),
+        }
+    }
+
+    fn from_provider(error: ProviderError, correlation_id: Uuid) -> Self {
+        match error {
+            ProviderError::UnknownProvider(_) => Self::new(
+                StatusCode::BAD_REQUEST,
+                "unknown_provider",
+                error.to_string(),
+                correlation_id,
+                None,
+            ),
+            ProviderError::Unavailable(_) => Self::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "provider_unavailable",
+                error.to_string(),
+                correlation_id,
+                None,
+            ),
+            ProviderError::InvalidResponse(_) => Self::new(
+                StatusCode::BAD_GATEWAY,
+                "invalid_provider_response",
                 error.to_string(),
                 correlation_id,
                 None,
@@ -594,5 +624,17 @@ impl ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         (self.status, Json(self.body)).into_response()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::constant_time_eq;
+
+    #[test]
+    fn constant_time_comparison_checks_content_and_length() {
+        assert!(constant_time_eq(b"secret", b"secret"));
+        assert!(!constant_time_eq(b"secret", b"secreu"));
+        assert!(!constant_time_eq(b"secret", b"short"));
     }
 }
