@@ -9,7 +9,10 @@ pub struct TerminalSize {
 
 impl Default for TerminalSize {
     fn default() -> Self {
-        Self { cols: 140, rows: 40 }
+        Self {
+            cols: 140,
+            rows: 40,
+        }
     }
 }
 
@@ -100,7 +103,13 @@ mod tests {
 
     #[test]
     fn default_terminal_size_is_human_friendly() {
-        assert_eq!(TerminalSize::default(), TerminalSize { cols: 140, rows: 40 });
+        assert_eq!(
+            TerminalSize::default(),
+            TerminalSize {
+                cols: 140,
+                rows: 40
+            }
+        );
     }
 
     #[test]
