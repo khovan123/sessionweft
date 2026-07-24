@@ -7,8 +7,8 @@ use axum::{
 use serde::Deserialize;
 use sessionweft_client_protocol::{
     AgentExecutionSupervisor, AgentExecutionView, ExecutionError, StartAgentExecutionRequest,
-    StartAgentExecutionResponse, StopAgentExecutionRequest, TerminalFrameBatch, TerminalInputRequest,
-    TerminalResizeRequest,
+    StartAgentExecutionResponse, StopAgentExecutionRequest, TerminalFrameBatch,
+    TerminalInputRequest, TerminalResizeRequest,
 };
 use uuid::Uuid;
 
@@ -21,10 +21,7 @@ pub(super) fn routes() -> Router<AppState> {
             post(start_execution),
         )
         .route("/v1/executions/{execution_id}", get(get_execution))
-        .route(
-            "/v1/executions/{execution_id}/terminal",
-            get(read_terminal),
-        )
+        .route("/v1/executions/{execution_id}/terminal", get(read_terminal))
         .route(
             "/v1/executions/{execution_id}/terminal/input",
             post(write_terminal),
@@ -120,9 +117,10 @@ fn execution_error(error: ExecutionError) -> ApiError {
         ExecutionError::FencingTokenMismatch => (StatusCode::CONFLICT, "fencing_token_mismatch"),
         ExecutionError::Validation(_) => (StatusCode::BAD_REQUEST, "invalid_execution_request"),
         ExecutionError::Pty(_) => (StatusCode::BAD_GATEWAY, "pty_execution_failed"),
-        ExecutionError::Poisoned | ExecutionError::Io(_) | ExecutionError::Json(_) => {
-            (StatusCode::INTERNAL_SERVER_ERROR, "execution_internal_error")
-        }
+        ExecutionError::Poisoned | ExecutionError::Io(_) | ExecutionError::Json(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "execution_internal_error",
+        ),
     };
     ApiError::new(status, code, error.to_string(), correlation_id, None)
 }
