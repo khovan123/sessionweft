@@ -494,10 +494,13 @@ fn parse_session_id(value: &str, correlation_id: Uuid) -> Result<SessionId, ApiE
 
 #[derive(Debug, Serialize)]
 struct ErrorBody {
+    protocol_version: u32,
     code: &'static str,
     message: String,
     correlation_id: Uuid,
-    details: Option<serde_json::Value>,
+    retryable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    committed_version: Option<u64>,
 }
 
 struct ApiError {
@@ -511,108 +514,94 @@ impl ApiError {
         code: &'static str,
         message: impl Into<String>,
         correlation_id: Uuid,
-        details: Option<serde_json::Value>,
+        committed_version: Option<u64>,
     ) -> Self {
         Self {
             status,
             body: ErrorBody {
+                protocol_version: CLIENT_PROTOCOL_VERSION,
                 code,
                 message: message.into(),
                 correlation_id,
-                details,
+                retryable: status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS,
+                committed_version,
             },
         }
     }
 
     fn from_runtime(error: RuntimeError, correlation_id: Uuid) -> Self {
         match error {
-            RuntimeError::Domain(error) => Self::from_domain(error, correlation_id),
-            RuntimeError::Storage(error) => Self::from_storage(error, correlation_id),
-            RuntimeError::Provider(error) => Self::from_provider(error, correlation_id),
-        }
-    }
-
-    fn from_domain(error: DomainError, correlation_id: Uuid) -> Self {
-        match error {
-            DomainError::InvalidTitle
-            | DomainError::InvalidMessage
-            | DomainError::InvalidProvider
-            | DomainError::InvalidModel
-            | DomainError::InvalidActor => Self::new(
+            RuntimeError::Domain(DomainError::Validation(message)) => Self::new(
                 StatusCode::BAD_REQUEST,
-                "validation_failed",
+                "validation",
+                message,
+                correlation_id,
+                None,
+            ),
+            RuntimeError::Domain(DomainError::Conflict { expected, actual }) => Self::new(
+                StatusCode::CONFLICT,
+                "conflict",
+                format!("expected version {expected}, actual version {actual}"),
+                correlation_id,
+                None,
+            ),
+            RuntimeError::Domain(DomainError::Archived) => Self::new(
+                StatusCode::CONFLICT,
+                "session_archived",
+                "session is archived",
+                correlation_id,
+                None,
+            ),
+            RuntimeError::Storage(StorageError::Conflict { expected, actual }) => Self::new(
+                StatusCode::CONFLICT,
+                "conflict",
+                format!("expected version {expected}, actual version {actual}"),
+                correlation_id,
+                None,
+            ),
+            RuntimeError::NotFound(_) | RuntimeError::Storage(StorageError::NotFound(_)) => {
+                Self::new(
+                    StatusCode::NOT_FOUND,
+                    "not_found",
+                    "session not found",
+                    correlation_id,
+                    None,
+                )
+            }
+            RuntimeError::ProviderNotSelected => Self::new(
+                StatusCode::CONFLICT,
+                "provider_not_selected",
+                "select a provider before running the session",
+                correlation_id,
+                None,
+            ),
+            RuntimeError::Provider(ProviderError::NotRegistered(provider)) => Self::new(
+                StatusCode::BAD_REQUEST,
+                "provider_not_registered",
+                format!("provider '{provider}' is not registered"),
+                correlation_id,
+                None,
+            ),
+            RuntimeError::ProviderAfterCommit {
+                committed_version,
+                source,
+            } => Self::new(
+                StatusCode::BAD_GATEWAY,
+                "provider_failed_after_commit",
+                source.to_string(),
+                correlation_id,
+                Some(committed_version),
+            ),
+            RuntimeError::Provider(error) => Self::new(
+                StatusCode::BAD_GATEWAY,
+                "provider_error",
                 error.to_string(),
                 correlation_id,
                 None,
             ),
-            DomainError::InvalidTransition => Self::new(
-                StatusCode::CONFLICT,
-                "invalid_transition",
-                error.to_string(),
-                correlation_id,
-                None,
-            ),
-            DomainError::VersionConflict { expected, actual } => Self::new(
-                StatusCode::CONFLICT,
-                "version_conflict",
-                error.to_string(),
-                correlation_id,
-                Some(serde_json::json!({
-                    "expected": expected,
-                    "actual": actual,
-                })),
-            ),
-        }
-    }
-
-    fn from_storage(error: StorageError, correlation_id: Uuid) -> Self {
-        match error {
-            StorageError::NotFound => Self::new(
-                StatusCode::NOT_FOUND,
-                "session_not_found",
-                error.to_string(),
-                correlation_id,
-                None,
-            ),
-            StorageError::Conflict { expected, actual } => Self::new(
-                StatusCode::CONFLICT,
-                "storage_conflict",
-                error.to_string(),
-                correlation_id,
-                Some(serde_json::json!({
-                    "expected": expected,
-                    "actual": actual,
-                })),
-            ),
-            StorageError::Database(_) | StorageError::Serialization(_) => Self::new(
+            RuntimeError::Storage(error) => Self::new(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "storage_error",
-                error.to_string(),
-                correlation_id,
-                None,
-            ),
-        }
-    }
-
-    fn from_provider(error: ProviderError, correlation_id: Uuid) -> Self {
-        match error {
-            ProviderError::UnknownProvider(_) => Self::new(
-                StatusCode::BAD_REQUEST,
-                "unknown_provider",
-                error.to_string(),
-                correlation_id,
-                None,
-            ),
-            ProviderError::Unavailable(_) => Self::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "provider_unavailable",
-                error.to_string(),
-                correlation_id,
-                None,
-            ),
-            ProviderError::InvalidResponse(_) => Self::new(
-                StatusCode::BAD_GATEWAY,
-                "invalid_provider_response",
                 error.to_string(),
                 correlation_id,
                 None,
