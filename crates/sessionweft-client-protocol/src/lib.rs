@@ -1,9 +1,11 @@
 mod execution;
+mod execution_supervisor;
 mod journal;
 mod model;
 mod pty;
 
 pub use execution::*;
+pub use execution_supervisor::{AgentExecutionSupervisor, ExecutionError};
 pub use journal::{EventJournal, EventJournalError, JournalEventTransport, validate_event_limit};
 pub use model::*;
 pub use pty::{PtyError, PtySupervisor, discover_programs};
