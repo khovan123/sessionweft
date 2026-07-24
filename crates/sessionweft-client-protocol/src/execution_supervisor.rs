@@ -11,8 +11,9 @@ use uuid::Uuid;
 
 use crate::{
     AgentExecutionState, AgentExecutionView, PtyError, PtyResizeRequest, PtyStatus, PtySupervisor,
-    StartAgentExecutionRequest, StartAgentExecutionResponse, StartPtyRequest, StopAgentExecutionRequest,
-    TerminalFrame, TerminalFrameBatch, TerminalInputRequest, TerminalResizeRequest,
+    StartAgentExecutionRequest, StartAgentExecutionResponse, StartPtyRequest,
+    StopAgentExecutionRequest, TerminalFrame, TerminalFrameBatch, TerminalInputRequest,
+    TerminalResizeRequest,
 };
 
 #[derive(Clone)]
@@ -30,7 +31,10 @@ struct ExecutionRecord {
 }
 
 impl AgentExecutionSupervisor {
-    pub fn new(workspace_root: impl AsRef<Path>, pty: PtySupervisor) -> Result<Self, ExecutionError> {
+    pub fn new(
+        workspace_root: impl AsRef<Path>,
+        pty: PtySupervisor,
+    ) -> Result<Self, ExecutionError> {
         let workspace_root = fs::canonicalize(workspace_root)?;
         Ok(Self {
             workspace_root: Arc::new(workspace_root),
@@ -81,7 +85,10 @@ impl AgentExecutionSupervisor {
                 "SESSIONWEFT_PLUGINS_DIR".into(),
                 context_dir.join("plugins").display().to_string(),
             ),
-            ("SESSIONWEFT_FENCING_TOKEN".into(), fencing_token.to_string()),
+            (
+                "SESSIONWEFT_FENCING_TOKEN".into(),
+                fencing_token.to_string(),
+            ),
         ]);
         let pty = self.pty.start(StartPtyRequest {
             session_id,
@@ -315,6 +322,9 @@ mod tests {
             plugins: Vec::new(),
             terminal: Default::default(),
         };
-        assert!(matches!(validate_start(&request), Err(ExecutionError::Validation(_))));
+        assert!(matches!(
+            validate_start(&request),
+            Err(ExecutionError::Validation(_))
+        ));
     }
 }
