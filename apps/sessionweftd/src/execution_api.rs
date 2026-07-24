@@ -10,6 +10,7 @@ use sessionweft_client_protocol::{
     StartAgentExecutionResponse, StopAgentExecutionRequest, TerminalFrameBatch,
     TerminalInputRequest, TerminalResizeRequest,
 };
+use sessionweft_core::SessionId;
 use uuid::Uuid;
 
 use crate::{ApiError, AppState};
@@ -35,9 +36,19 @@ pub(super) fn routes() -> Router<AppState> {
 
 async fn start_execution(
     State(state): State<AppState>,
-    Path((session_id, workflow_id, node_id)): Path<(Uuid, Uuid, String)>,
+    Path((session_id, workflow_id, node_id)): Path<(String, Uuid, String)>,
     Json(request): Json<StartAgentExecutionRequest>,
 ) -> Result<Json<StartAgentExecutionResponse>, ApiError> {
+    let correlation_id = Uuid::new_v4();
+    let session_id = session_id.parse::<SessionId>().map_err(|_| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "invalid_session_id",
+            "session id must be a UUID",
+            correlation_id,
+            None,
+        )
+    })?;
     state
         .executions
         .start(session_id, workflow_id, node_id, request)
