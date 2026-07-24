@@ -8,7 +8,13 @@ The Runtime-owned Session remains canonical. Codex, Claude, Gemini, Antigravity 
 
 ## Start
 
-Run the normal SessionWeft Runtime first:
+Build both agent binaries so the shell can delegate normal prompts to `sessionweft-agent`:
+
+```bash
+cargo build -p sessionweft --bins
+```
+
+Run the normal SessionWeft Runtime:
 
 ```bash
 cargo run -p sessionweftd --bin sessionweftd
@@ -17,16 +23,24 @@ cargo run -p sessionweftd --bin sessionweftd
 Start the managed agent shell with any supported adapter:
 
 ```bash
-cargo run -p sessionweft --bin sessionweft-agent-shell -- codex --cwd .
+./target/debug/sessionweft-agent-shell codex --cwd .
 ```
 
 Start from an existing Session:
 
 ```bash
-cargo run -p sessionweft --bin sessionweft-agent-shell -- claude \
+./target/debug/sessionweft-agent-shell claude \
   --session <SESSION_ID> \
   --cwd .
 ```
+
+Installed binaries work the same way:
+
+```bash
+sessionweft-agent-shell fcc-claude --session <SESSION_ID> --cwd .
+```
+
+Use `SESSIONWEFT_AGENT_BIN` or `--agent-bin` when `sessionweft-agent` is stored at a custom path.
 
 ## Slash commands
 
