@@ -113,7 +113,9 @@ impl RuntimeClient {
         }
         let response = request.send().context("reach SessionWeft Runtime")?;
         let status = response.status();
-        let value = response.json::<Value>().context("decode Runtime response")?;
+        let value = response
+            .json::<Value>()
+            .context("decode Runtime response")?;
         if !status.is_success() {
             bail!("SessionWeft Runtime returned HTTP {status}: {value}");
         }
@@ -127,7 +129,11 @@ pub(super) fn run() -> anyhow::Result<()> {
         .with_context(|| format!("resolve wrapper working directory {}", cli.cwd.display()))?;
     let bin_dir = cli
         .bin_dir
-        .or_else(|| env::current_exe().ok().and_then(|path| path.parent().map(Path::to_owned)))
+        .or_else(|| {
+            env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(Path::to_owned))
+        })
         .context("resolve wrapper binary directory")?;
     let runtime = RuntimeClient::new(cli.endpoint, cli.token);
 
@@ -139,10 +145,18 @@ pub(super) fn run() -> anyhow::Result<()> {
         println!("  {:<18} -> {}", agent.launcher(), agent.program());
     }
     println!();
-    println!("This process keeps wrapper configuration available. Launchers are standalone binaries that connect to the same Runtime.");
+    println!(
+        "This process keeps wrapper configuration available. Launchers are standalone binaries that connect to the same Runtime."
+    );
 
     let health = runtime.get("/health/ready")?;
-    println!("Runtime health: {}", health.get("status").and_then(Value::as_str).unwrap_or("ready"));
+    println!(
+        "Runtime health: {}",
+        health
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("ready")
+    );
 
     install_launcher_hints(&bin_dir)?;
 
@@ -176,7 +190,11 @@ fn install_launcher_hints(bin_dir: &Path) -> anyhow::Result<()> {
     println!("Wrapper binary: {}", wrapper.display());
     println!("Create symlinks or aliases pointing these names to the wrapper binary:");
     for agent in AgentKind::ALL {
-        println!("  ln -sf {} {}", wrapper.display(), bin_dir.join(agent.launcher()).display());
+        println!(
+            "  ln -sf {} {}",
+            wrapper.display(),
+            bin_dir.join(agent.launcher()).display()
+        );
     }
     Ok(())
 }
