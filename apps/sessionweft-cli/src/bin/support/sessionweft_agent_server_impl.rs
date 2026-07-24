@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::{Context, bail};
 use clap::{Parser, ValueEnum};
-use reqwest::blocking::Client;
+use reqwest::Client;
 use serde_json::Value;
 
 #[derive(Debug, Parser)]
@@ -106,15 +106,16 @@ impl RuntimeClient {
         }
     }
 
-    fn get(&self, path: &str) -> anyhow::Result<Value> {
+    async fn get(&self, path: &str) -> anyhow::Result<Value> {
         let mut request = self.http.get(format!("{}{}", self.endpoint, path));
         if let Some(token) = self.token.as_deref() {
             request = request.bearer_auth(token);
         }
-        let response = request.send().context("reach SessionWeft Runtime")?;
+        let response = request.send().await.context("reach SessionWeft Runtime")?;
         let status = response.status();
         let value = response
             .json::<Value>()
+            .await
             .context("decode Runtime response")?;
         if !status.is_success() {
             bail!("SessionWeft Runtime returned HTTP {status}: {value}");
@@ -123,7 +124,8 @@ impl RuntimeClient {
     }
 }
 
-pub(super) fn run() -> anyhow::Result<()> {
+#[tokio::main]
+pub(super) async fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let cwd = std::fs::canonicalize(&cli.cwd)
         .with_context(|| format!("resolve wrapper working directory {}", cli.cwd.display()))?;
@@ -149,7 +151,7 @@ pub(super) fn run() -> anyhow::Result<()> {
         "This process keeps wrapper configuration available. Launchers are standalone binaries that connect to the same Runtime."
     );
 
-    let health = runtime.get("/health/ready")?;
+    let health = runtime.get("/health/ready").await?;
     println!(
         "Runtime health: {}",
         health
@@ -172,7 +174,7 @@ pub(super) fn run() -> anyhow::Result<()> {
         match line.trim() {
             "" => {}
             "help" => println!("commands: help, sessions, launchers, quit"),
-            "sessions" => print_sessions(&runtime.get("/v1/sessions?limit=100")?)?,
+            "sessions" => print_sessions(&runtime.get("/v1/sessions?limit=100").await?)?,
             "launchers" => {
                 for agent in AgentKind::ALL {
                     println!("{}", agent.launcher());
