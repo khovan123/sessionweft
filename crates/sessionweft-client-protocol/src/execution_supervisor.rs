@@ -6,6 +6,7 @@ use std::{
 };
 
 use serde_json::json;
+use sessionweft_core::SessionId;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -45,7 +46,7 @@ impl AgentExecutionSupervisor {
 
     pub fn start(
         &self,
-        session_id: Uuid,
+        session_id: SessionId,
         workflow_id: Uuid,
         node_id: String,
         request: StartAgentExecutionRequest,
@@ -243,7 +244,7 @@ fn validate_start(request: &StartAgentExecutionRequest) -> Result<(), ExecutionE
 fn materialize_context(
     context_dir: &Path,
     execution_id: Uuid,
-    session_id: Uuid,
+    session_id: SessionId,
     workflow_id: Uuid,
     node_id: &str,
     fencing_token: u64,
