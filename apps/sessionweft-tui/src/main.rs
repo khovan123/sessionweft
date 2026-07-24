@@ -35,7 +35,11 @@ const AGENTS: [&str; 6] = [
 ];
 
 #[derive(Debug, Parser)]
-#[command(name = "sessionweft-tui", version, about = "SessionWeft Runtime execution TUI")]
+#[command(
+    name = "sessionweft-tui",
+    version,
+    about = "SessionWeft Runtime execution TUI"
+)]
 struct Cli {
     #[arg(
         long,
@@ -260,17 +264,19 @@ impl App {
                     Err(error) => self.status = format!("invalid execution response: {error}"),
                 }
             }
-            Ok(response) => self.status = format!("execution start failed: HTTP {}", response.status()),
+            Ok(response) => {
+                self.status = format!("execution start failed: HTTP {}", response.status())
+            }
             Err(error) => self.status = format!("execution start failed: {error}"),
         }
     }
 
     async fn fetch_execution(&self, execution_id: Uuid) -> anyhow::Result<AgentExecutionView> {
         let response = self
-            .authorized(self.client.get(format!(
-                "{}/v1/executions/{execution_id}",
-                self.endpoint
-            )))
+            .authorized(
+                self.client
+                    .get(format!("{}/v1/executions/{execution_id}", self.endpoint)),
+            )
             .send()
             .await?;
         ensure_success(response.status())?;
@@ -425,7 +431,8 @@ async fn run(
                     KeyCode::Esc => app.mode = Mode::Monitor,
                     KeyCode::Enter => {
                         let area = terminal.size()?;
-                        app.start_execution(area.height.saturating_sub(4), area.width).await;
+                        app.start_execution(area.height.saturating_sub(4), area.width)
+                            .await;
                     }
                     KeyCode::Backspace => {
                         app.task.pop();
@@ -475,9 +482,11 @@ fn render(frame: &mut Frame<'_>, app: &App) {
             "Session {} | agent {} | {} | mode {:?} | {}",
             app.session_id, AGENTS[app.selected_agent], execution, app.mode, app.status
         ))
-        .block(Block::default().borders(Borders::ALL).title(
-            "SessionWeft · t task · g agent · o terminal · x stop · a/d approval · q quit",
-        )),
+        .block(
+            Block::default().borders(Borders::ALL).title(
+                "SessionWeft · t task · g agent · o terminal · x stop · a/d approval · q quit",
+            ),
+        ),
         rows[0],
     );
 
@@ -485,9 +494,11 @@ fn render(frame: &mut Frame<'_>, app: &App) {
         Mode::Terminal => frame.render_widget(
             Paragraph::new(app.terminal_output.clone())
                 .wrap(Wrap { trim: false })
-                .block(Block::default().borders(Borders::ALL).title(
-                    "Runtime-owned agent terminal · Esc monitor · Ctrl-X stop",
-                )),
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Runtime-owned agent terminal · Esc monitor · Ctrl-X stop"),
+                ),
             rows[1],
         ),
         Mode::Task => frame.render_widget(
@@ -499,9 +510,11 @@ fn render(frame: &mut Frame<'_>, app: &App) {
                 app.task
             ))
             .wrap(Wrap { trim: false })
-            .block(Block::default().borders(Borders::ALL).title(
-                "Task editor · Enter start via Runtime · Tab agent · Esc cancel",
-            )),
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .title("Task editor · Enter start via Runtime · Tab agent · Esc cancel"),
+            ),
             rows[1],
         ),
         Mode::Monitor => {
@@ -529,9 +542,11 @@ fn render(frame: &mut Frame<'_>, app: &App) {
                         .unwrap_or_else(|| "No workflow selected".into()),
                 )
                 .wrap(Wrap { trim: false })
-                .block(Block::default().borders(Borders::ALL).title(
-                    "Workflow / Agent / Locks",
-                )),
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Workflow / Agent / Locks"),
+                ),
                 columns[1],
             );
         }
@@ -557,7 +572,11 @@ fn render(frame: &mut Frame<'_>, app: &App) {
                 .iter()
                 .enumerate()
                 .map(|(index, approval)| {
-                    let marker = if index == app.selected_approval { ">" } else { " " };
+                    let marker = if index == app.selected_approval {
+                        ">"
+                    } else {
+                        " "
+                    };
                     ListItem::new(format!(
                         "{marker} {} / {} / version {}",
                         approval.workflow_id, approval.node_id, approval.expected_version
