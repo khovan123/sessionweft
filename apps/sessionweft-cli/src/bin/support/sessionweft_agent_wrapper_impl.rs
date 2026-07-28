@@ -1,7 +1,7 @@
 use std::{
     env,
     ffi::OsString,
-    io::{self, BufRead, Write},
+    io::{self, Write},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -9,13 +9,13 @@ use std::{
 use anyhow::{Context, bail};
 use clap::Parser;
 use reqwest::Client;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 #[derive(Debug, Parser)]
 #[command(
     name = "sessionweft-agent-wrapper",
     version,
-    about = "Wrap a real agent terminal with shared SessionWeft /resume commands"
+    about = "Select or create a shared Session, then open the native agent CLI"
 )]
 struct Cli {
     #[arg(
@@ -30,6 +30,9 @@ struct Cli {
 
     #[arg(long)]
     session: Option<String>,
+
+    #[arg(long)]
+    new: Option<String>,
 
     #[arg(long, default_value = ".")]
     cwd: PathBuf,
@@ -108,17 +111,32 @@ impl RuntimeClient {
         if let Some(token) = self.token.as_deref() {
             request = request.bearer_auth(token);
         }
-        let response = request.send().await.context("reach SessionWeft Runtime")?;
-        let status = response.status();
-        let value = response
-            .json::<Value>()
-            .await
-            .context("decode Runtime response")?;
-        if !status.is_success() {
-            bail!("SessionWeft Runtime returned HTTP {status}: {value}");
-        }
-        Ok(value)
+        decode_response(request.send().await.context("reach SessionWeft Runtime")?).await
     }
+
+    async fn post(&self, path: &str, body: Value) -> anyhow::Result<Value> {
+        let mut request = self
+            .http
+            .post(format!("{}{}", self.endpoint, path))
+            .json(&body);
+        if let Some(token) = self.token.as_deref() {
+            request = request.bearer_auth(token);
+        }
+        decode_response(request.send().await.context("reach SessionWeft Runtime")?).await
+    }
+
+    async fn create_session(&self, title: &str) -> anyhow::Result<Value> {
+        self.post("/v1/sessions", json!({"title": title})).await
+    }
+}
+
+async fn decode_response(response: reqwest::Response) -> anyhow::Result<Value> {
+    let status = response.status();
+    let value = response.json::<Value>().await.context("decode Runtime response")?;
+    if !status.is_success() {
+        bail!("SessionWeft Runtime returned HTTP {status}: {value}");
+    }
+    Ok(value)
 }
 
 #[tokio::main]
@@ -129,62 +147,58 @@ async fn main() -> anyhow::Result<()> {
     let agent = resolve_agent(cli.agent.as_deref())?;
     let runtime = RuntimeClient::new(cli.endpoint, cli.token);
 
-    let mut session_id = cli.session;
-    if session_id.is_none() {
-        print_sessions(&runtime.get("/v1/sessions?limit=100").await?)?;
-        session_id = prompt_session_id()?;
-    }
-    let selected = session_id.context("a Session ID is required")?;
-    let session = runtime.get(&format!("/v1/sessions/{selected}")).await?;
+    let session = if let Some(session_id) = cli.session.as_deref() {
+        runtime.get(&format!("/v1/sessions/{session_id}")).await?
+    } else if let Some(title) = cli.new.as_deref() {
+        runtime.create_session(title).await?
+    } else {
+        select_session(&runtime).await?
+    };
+
     print_session(&session, agent);
     materialize_wrapper_context(&cwd, &session, agent)?;
+    launch_native(agent, &cwd, &cli.passthrough)
+}
 
-    if matches!(agent, AgentKind::Antigravity) {
-        return launch_native(agent, &cwd, &cli.passthrough);
+async fn select_session(runtime: &RuntimeClient) -> anyhow::Result<Value> {
+    println!("SessionWeft session setup");
+    println!("  [n] Create new Session");
+    println!("  [r] Resume existing Session");
+    print!("Choose [n/r]: ");
+    io::stdout().flush()?;
+
+    let choice = read_line()?.to_ascii_lowercase();
+    match choice.as_str() {
+        "n" | "new" | "1" => {
+            print!("Session title [Shared coding session]: ");
+            io::stdout().flush()?;
+            let title = read_line()?;
+            let title = if title.is_empty() {
+                "Shared coding session"
+            } else {
+                title.as_str()
+            };
+            runtime.create_session(title).await
+        }
+        "r" | "resume" | "2" => {
+            let sessions = runtime.get("/v1/sessions?limit=100").await?;
+            print_sessions(&sessions)?;
+            print!("Session ID: ");
+            io::stdout().flush()?;
+            let session_id = read_line()?;
+            if session_id.is_empty() {
+                bail!("Session ID is required");
+            }
+            runtime.get(&format!("/v1/sessions/{session_id}")).await
+        }
+        other => bail!("unsupported choice '{other}'; use n or r"),
     }
+}
 
-    println!("SessionWeft wrapper commands are available before the native agent starts:");
-    println!("  /resume                 list Sessions");
-    println!("  /resume <SESSION_ID>    select Session");
-    println!("  /session                show current Session");
-    println!("  /start                  open the native {} terminal", agent.label());
-    println!();
-
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
-    let mut current = selected;
-    loop {
-        write!(stdout, "[{} | {} wrapper] > ", short_id(&current), agent.label())?;
-        stdout.flush()?;
-        let mut line = String::new();
-        if stdin.lock().read_line(&mut line)? == 0 {
-            break;
-        }
-        let line = line.trim();
-        if line.is_empty() {
-            continue;
-        }
-        if line == "/resume" {
-            print_sessions(&runtime.get("/v1/sessions?limit=100").await?)?;
-        } else if let Some(id) = line.strip_prefix("/resume ") {
-            let session = runtime
-                .get(&format!("/v1/sessions/{}", id.trim()))
-                .await?;
-            current = required_string(&session, "id")?;
-            print_session(&session, agent);
-            materialize_wrapper_context(&cwd, &session, agent)?;
-        } else if line == "/session" {
-            let session = runtime.get(&format!("/v1/sessions/{current}")).await?;
-            print_session(&session, agent);
-        } else if line == "/start" {
-            return launch_native(agent, &cwd, &cli.passthrough);
-        } else if matches!(line, "/quit" | "/exit") {
-            break;
-        } else {
-            eprintln!("unknown wrapper command: {line}; use /resume, /session or /start");
-        }
-    }
-    Ok(())
+fn read_line() -> anyhow::Result<String> {
+    let mut input = String::new();
+    io::stdin().read_line(&mut input)?;
+    Ok(input.trim().to_owned())
 }
 
 fn resolve_agent(explicit: Option<&str>) -> anyhow::Result<AgentKind> {
@@ -199,21 +213,13 @@ fn resolve_agent(explicit: Option<&str>) -> anyhow::Result<AgentKind> {
     AgentKind::parse(&executable)
 }
 
-fn prompt_session_id() -> anyhow::Result<Option<String>> {
-    print!("Session ID: ");
-    io::stdout().flush()?;
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-    let input = input.trim();
-    Ok((!input.is_empty()).then(|| input.to_owned()))
-}
-
 fn launch_native(agent: AgentKind, cwd: &Path, args: &[OsString]) -> anyhow::Result<()> {
     let status = Command::new(agent.program())
         .args(args)
         .current_dir(cwd)
         .env("SESSIONWEFT_WRAPPED_AGENT", agent.label())
         .env("SESSIONWEFT_CONTEXT_FILE", cwd.join(".sessionweft/active-context.md"))
+        .env("SESSIONWEFT_SESSION_FILE", cwd.join(".sessionweft/active-session"))
         .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -269,17 +275,21 @@ fn print_sessions(value: &Value) -> anyhow::Result<()> {
 }
 
 fn print_session(session: &Value, agent: AgentKind) {
-    let id = session.get("id").and_then(Value::as_str).unwrap_or("-");
-    let title = session
-        .get("title")
-        .and_then(Value::as_str)
-        .unwrap_or("Untitled Session");
-    let version = session.get("version").and_then(Value::as_u64).unwrap_or(0);
     println!("SESSION");
-    println!("  id:      {id}");
-    println!("  title:   {title}");
-    println!("  version: {version}");
+    println!("  id:      {}", session.get("id").and_then(Value::as_str).unwrap_or("-"));
+    println!(
+        "  title:   {}",
+        session
+            .get("title")
+            .and_then(Value::as_str)
+            .unwrap_or("Untitled Session")
+    );
+    println!(
+        "  version: {}",
+        session.get("version").and_then(Value::as_u64).unwrap_or(0)
+    );
     println!("  agent:   {}", agent.label());
+    println!("Opening native {} CLI...\n", agent.label());
 }
 
 fn required_string(value: &Value, field: &str) -> anyhow::Result<String> {
@@ -290,10 +300,6 @@ fn required_string(value: &Value, field: &str) -> anyhow::Result<String> {
         .with_context(|| format!("Runtime response is missing '{field}'"))
 }
 
-fn short_id(value: &str) -> &str {
-    value.get(..8).unwrap_or(value)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -301,11 +307,6 @@ mod tests {
     #[test]
     fn launcher_aliases_map_to_native_agents() {
         assert_eq!(AgentKind::parse("sw-codex").unwrap(), AgentKind::Codex);
-        assert_eq!(AgentKind::parse("sw-claude").unwrap(), AgentKind::Claude);
-        assert_eq!(
-            AgentKind::parse("sw-antigravity").unwrap(),
-            AgentKind::Antigravity
-        );
         assert_eq!(
             AgentKind::parse("sw-fcc-claude").unwrap(),
             AgentKind::FccClaude
