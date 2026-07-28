@@ -125,6 +125,7 @@ impl PtySupervisor {
             writer: Mutex::new(writer),
             killer: Mutex::new(killer),
             output: Mutex::new(OutputBuffer::new(request.max_output_bytes)),
+            completion: Mutex::new(CompletionState::default()),
             notify: Notify::new(),
         });
         self.sessions
@@ -240,12 +241,19 @@ impl PtySupervisor {
     }
 }
 
+#[derive(Default)]
+struct CompletionState {
+    reader_drained: bool,
+    child_status: Option<PtyStatus>,
+}
+
 struct PtySession {
     descriptor: Mutex<PtySessionDescriptor>,
     master: Mutex<Box<dyn MasterPty + Send>>,
     writer: Mutex<Box<dyn Write + Send>>,
     killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
     output: Mutex<OutputBuffer>,
+    completion: Mutex<CompletionState>,
     notify: Notify,
 }
 
@@ -266,6 +274,30 @@ impl PtySession {
         drop(descriptor);
         self.notify.notify_waiters();
         Ok(())
+    }
+
+    fn reader_drained(&self) {
+        let status = if let Ok(mut completion) = self.completion.lock() {
+            completion.reader_drained = true;
+            completion.child_status
+        } else {
+            Some(PtyStatus::Failed)
+        };
+        if let Some(status) = status {
+            self.finish(status);
+        }
+    }
+
+    fn child_finished(&self, status: PtyStatus) {
+        let reader_drained = if let Ok(mut completion) = self.completion.lock() {
+            completion.child_status = Some(status);
+            completion.reader_drained
+        } else {
+            true
+        };
+        if reader_drained {
+            self.finish(status);
+        }
     }
 
     fn finish(&self, status: PtyStatus) {
@@ -324,7 +356,10 @@ fn spawn_reader(session: Arc<PtySession>, mut reader: Box<dyn Read + Send>) {
         let mut buffer = [0_u8; 8 * 1024];
         loop {
             match reader.read(&mut buffer) {
-                Ok(0) => break,
+                Ok(0) => {
+                    session.reader_drained();
+                    break;
+                }
                 Ok(size) => {
                     if session.push_output(&buffer[..size]).is_err() {
                         session.finish(PtyStatus::Failed);
@@ -332,7 +367,9 @@ fn spawn_reader(session: Arc<PtySession>, mut reader: Box<dyn Read + Send>) {
                     }
                 }
                 Err(_) => {
-                    session.finish(PtyStatus::Failed);
+                    // Unix PTY readers commonly report EIO when the slave closes. Treat this as
+                    // a drained reader and let child.wait() determine the final process status.
+                    session.reader_drained();
                     break;
                 }
             }
@@ -341,9 +378,12 @@ fn spawn_reader(session: Arc<PtySession>, mut reader: Box<dyn Read + Send>) {
 }
 
 fn spawn_waiter(session: Arc<PtySession>, mut child: Box<dyn portable_pty::Child + Send + Sync>) {
-    thread::spawn(move || match child.wait() {
-        Ok(_) => session.finish(PtyStatus::Exited),
-        Err(_) => session.finish(PtyStatus::Failed),
+    thread::spawn(move || {
+        let status = match child.wait() {
+            Ok(_) => PtyStatus::Exited,
+            Err(_) => PtyStatus::Failed,
+        };
+        session.child_finished(status);
     });
 }
 
