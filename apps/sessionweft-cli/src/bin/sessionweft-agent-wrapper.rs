@@ -1,4 +1,4 @@
-#[allow(clippy::items_after_test_module)]
+#[allow(unused_imports, clippy::items_after_test_module)]
 mod wrapper {
     include!("support/sessionweft_agent_wrapper_impl.rs");
 
