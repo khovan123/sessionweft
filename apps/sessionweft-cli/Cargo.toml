@@ -7,6 +7,26 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "sessionweft"
+path = "src/main.rs"
+
+[[bin]]
+name = "sessionweft-agent"
+path = "src/bin/sessionweft-agent.rs"
+
+[[bin]]
+name = "sessionweft-agent-wrapper"
+path = "src/bin/sessionweft-agent-wrapper.rs"
+
+[[bin]]
+name = "sw-codex"
+path = "src/bin/sw-codex.rs"
+
+[[bin]]
+name = "sw-fcc-claude"
+path = "src/bin/sw-fcc-claude.rs"
+
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
