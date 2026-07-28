@@ -1,4 +1,8 @@
-use std::{env, path::PathBuf, process::{Command, Stdio}};
+use std::{
+    env,
+    path::PathBuf,
+    process::{Command, Stdio},
+};
 
 use anyhow::{Context, bail};
 
