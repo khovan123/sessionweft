@@ -67,10 +67,7 @@ impl App {
     }
 }
 
-pub(crate) fn pick_session(
-    value: &Value,
-    bindings: &BindingStore,
-) -> anyhow::Result<PickerResult> {
+pub(crate) fn pick_session(value: &Value, bindings: &BindingStore) -> anyhow::Result<PickerResult> {
     let sessions = parse_sessions(value, bindings)?;
     let mut app = App {
         mode: Mode::Browse,
@@ -208,11 +205,7 @@ fn render_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
             .as_deref()
             .map(format_timestamp)
             .unwrap_or_else(|| "not linked".to_owned());
-        let native = row
-            .native_id
-            .as_deref()
-            .map(short_id)
-            .unwrap_or("-");
+        let native = row.native_id.as_deref().map(short_id).unwrap_or("-");
         ListItem::new(Line::from(vec![
             Span::styled(
                 format!("{:<24}", truncate(&row.title, 24)),
@@ -271,10 +264,7 @@ fn parse_sessions(value: &Value, bindings: &BindingStore) -> anyhow::Result<Vec<
                     .and_then(Value::as_str)
                     .unwrap_or("Untitled Session")
                     .to_owned(),
-                version: session
-                    .get("version")
-                    .and_then(Value::as_u64)
-                    .unwrap_or(0),
+                version: session.get("version").and_then(Value::as_u64).unwrap_or(0),
                 messages: session
                     .get("messages")
                     .and_then(Value::as_array)
@@ -324,5 +314,9 @@ fn truncate(value: &str, max: usize) -> String {
     if value.chars().count() <= max {
         return value.to_owned();
     }
-    value.chars().take(max.saturating_sub(1)).collect::<String>() + "…"
+    value
+        .chars()
+        .take(max.saturating_sub(1))
+        .collect::<String>()
+        + "…"
 }
