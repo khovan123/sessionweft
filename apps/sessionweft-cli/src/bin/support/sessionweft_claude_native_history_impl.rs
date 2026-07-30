@@ -145,8 +145,9 @@ async fn main() -> anyhow::Result<()> {
     let sessionweft_session_id = required_string(&session, "id")?;
     refresh_codex_handoff(&cwd, &sessionweft_session_id);
 
-    let handoff = load_codex_handoff(&cwd, &sessionweft_session_id)?
-        .with_context(|| format!("Session {sessionweft_session_id} has no Codex handoff to import"))?;
+    let handoff = load_codex_handoff(&cwd, &sessionweft_session_id)?.with_context(|| {
+        format!("Session {sessionweft_session_id} has no Codex handoff to import")
+    })?;
     let imported_messages = parse_handoff_messages(&handoff);
     ensure!(
         !imported_messages.is_empty(),
@@ -200,12 +201,7 @@ async fn main() -> anyhow::Result<()> {
     state.last_started_at = now_unix();
     save_claude_state(&state_path, &state)?;
 
-    let status = launch_claude(
-        &cwd,
-        &context_path,
-        &native_session_id,
-        &cli.passthrough,
-    )?;
+    let status = launch_claude(&cwd, &context_path, &native_session_id, &cli.passthrough)?;
     state.last_ended_at = now_unix();
     save_claude_state(&state_path, &state)?;
     ensure_success(status)
@@ -485,7 +481,7 @@ fn claude_config_root() -> PathBuf {
 }
 
 fn encode_project_path(cwd: &Path) -> String {
-    cwd.to_string_lossy().replace('/', "-").replace('\\', "-")
+    cwd.to_string_lossy().replace(['/', '\\'], "-")
 }
 
 fn claude_version() -> String {
