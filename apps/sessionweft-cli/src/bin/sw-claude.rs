@@ -1,5 +1,6 @@
-#[path = "support/sessionweft_claude_native_history_impl.rs"]
-mod launcher;
+mod launcher {
+    include!("support/sessionweft_claude_native_history_impl.rs");
+}
 #[path = "support/sessionweft_handoff.rs"]
 mod sessionweft_handoff;
 #[path = "support/shared_session_picker.rs"]
