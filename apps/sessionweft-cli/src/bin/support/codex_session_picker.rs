@@ -1,7 +1,6 @@
 use std::{io, time::Duration};
 
 use anyhow::Context;
-use chrono::{DateTime, Local};
 use crossterm::{
     event::{self, Event as TerminalEvent, KeyCode, KeyEventKind},
     execute,
@@ -17,7 +16,7 @@ use ratatui::{
 };
 use serde_json::Value;
 
-use crate::codex_native_binding::BindingStore;
+use crate::codex_native_binding::{BindingStore, format_unix_utc};
 
 const DEFAULT_TITLE: &str = "Shared coding session";
 
@@ -35,7 +34,7 @@ struct SessionRow {
     version: u64,
     messages: usize,
     native_id: Option<String>,
-    last_ended_at: Option<String>,
+    last_ended_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -202,8 +201,7 @@ fn render_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
     items.extend(app.sessions.iter().map(|row| {
         let ended = row
             .last_ended_at
-            .as_deref()
-            .map(format_timestamp)
+            .map(format_unix_utc)
             .unwrap_or_else(|| "not linked".to_owned());
         let native = row.native_id.as_deref().map(short_id).unwrap_or("-");
         ListItem::new(Line::from(vec![
@@ -270,7 +268,7 @@ fn parse_sessions(value: &Value, bindings: &BindingStore) -> anyhow::Result<Vec<
                     .and_then(Value::as_array)
                     .map_or(0, Vec::len),
                 native_id: binding.map(|binding| binding.native_session_id.clone()),
-                last_ended_at: binding.map(|binding| binding.last_ended_at.clone()),
+                last_ended_at: binding.map(|binding| binding.last_ended_at),
             })
         })
         .collect())
@@ -293,17 +291,6 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(vertical[1])[1]
-}
-
-fn format_timestamp(value: &str) -> String {
-    DateTime::parse_from_rfc3339(value)
-        .map(|value| {
-            value
-                .with_timezone(&Local)
-                .format("%Y-%m-%d %H:%M")
-                .to_string()
-        })
-        .unwrap_or_else(|_| value.to_owned())
 }
 
 fn short_id(value: &str) -> &str {
