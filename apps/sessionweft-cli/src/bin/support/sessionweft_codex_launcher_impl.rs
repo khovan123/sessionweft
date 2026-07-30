@@ -6,14 +6,14 @@ use std::{
 };
 
 use anyhow::{Context, bail};
-use chrono::Utc;
 use clap::Parser;
 use reqwest::Client;
 use serde_json::{Value, json};
 
 use crate::{
     codex_native_binding::{
-        AGENT, BindingStore, NativeBinding, discover_new, find_by_id, snapshot, validate_uuid,
+        AGENT, BindingStore, NativeBinding, discover_new, find_by_id, format_unix_utc, now_unix,
+        snapshot, validate_uuid,
     },
     codex_session_picker::{PickerResult, pick_session},
 };
@@ -121,12 +121,12 @@ async fn main() -> anyhow::Result<()> {
 
     if let Some(native_id) = cli.native_session.as_deref() {
         validate_uuid(native_id)?;
-        let now = Utc::now().to_rfc3339();
+        let now = now_unix();
         bindings.upsert(NativeBinding {
             sessionweft_session_id: session_id.clone(),
             agent: AGENT.to_owned(),
             native_session_id: native_id.to_owned(),
-            last_started_at: now.clone(),
+            last_started_at: now,
             last_ended_at: now,
         })?;
     }
@@ -136,7 +136,7 @@ async fn main() -> anyhow::Result<()> {
     materialize_context(&cwd, &session, existing_binding.as_ref())?;
 
     let before = snapshot(&cwd);
-    let started_at = Utc::now();
+    let started_at = now_unix();
     let status = launch_codex(
         &cwd,
         &cli.passthrough,
@@ -144,7 +144,7 @@ async fn main() -> anyhow::Result<()> {
             .as_ref()
             .map(|binding| binding.native_session_id.as_str()),
     )?;
-    let ended_at = Utc::now();
+    let ended_at = now_unix();
 
     let record = existing_binding
         .as_ref()
@@ -155,8 +155,8 @@ async fn main() -> anyhow::Result<()> {
             sessionweft_session_id: session_id,
             agent: AGENT.to_owned(),
             native_session_id: record.id,
-            last_started_at: started_at.to_rfc3339(),
-            last_ended_at: ended_at.to_rfc3339(),
+            last_started_at: started_at,
+            last_ended_at: ended_at,
         })?;
     } else if existing_binding.is_none() {
         eprintln!(
@@ -279,14 +279,14 @@ fn print_session(session: &Value, binding: Option<&NativeBinding>) {
     println!(
         "  last started:   {}",
         binding
-            .map(|binding| binding.last_started_at.as_str())
-            .unwrap_or("-")
+            .map(|binding| format_unix_utc(binding.last_started_at))
+            .unwrap_or_else(|| "-".to_owned())
     );
     println!(
         "  last ended:     {}",
         binding
-            .map(|binding| binding.last_ended_at.as_str())
-            .unwrap_or("-")
+            .map(|binding| format_unix_utc(binding.last_ended_at))
+            .unwrap_or_else(|| "-".to_owned())
     );
     println!(
         "{}\n",
