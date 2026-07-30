@@ -65,10 +65,11 @@ impl App {
 
 pub(crate) fn pick_session(value: &Value, agent: &str) -> anyhow::Result<PickerResult> {
     let sessions = parse_sessions(value)?;
+    let selected = usize::from(!sessions.is_empty());
     let mut app = App {
         agent: agent.to_owned(),
         mode: Mode::Browse,
-        selected: 0,
+        selected,
         sessions,
         title: String::new(),
     };
@@ -167,8 +168,8 @@ fn render(frame: &mut Frame<'_>, app: &App) {
 
     frame.render_widget(
         Paragraph::new(match app.mode {
-            Mode::Browse => "Create or continue a shared Session",
-            Mode::Create => "Create a new shared Session",
+            Mode::Browse => format!("Select a Session to resume in native {}", app.agent),
+            Mode::Create => "Create a new shared Session".to_owned(),
         })
         .alignment(Alignment::Center),
         chunks[0],
@@ -180,7 +181,7 @@ fn render(frame: &mut Frame<'_>, app: &App) {
     }
 
     let help = match app.mode {
-        Mode::Browse => "↑/↓ Navigate   Enter Select   Esc Quit",
+        Mode::Browse => "↑/↓ Navigate   Enter Resume/Create   Esc Quit",
         Mode::Create => "Type a title   Enter Create   Esc Back",
     };
     frame.render_widget(
