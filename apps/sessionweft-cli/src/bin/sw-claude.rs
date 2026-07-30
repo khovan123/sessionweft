@@ -1,4 +1,4 @@
-#[path = "support/sessionweft_claude_launcher_impl.rs"]
+#[path = "support/sessionweft_claude_native_history_impl.rs"]
 mod launcher;
 #[path = "support/sessionweft_handoff.rs"]
 mod sessionweft_handoff;
