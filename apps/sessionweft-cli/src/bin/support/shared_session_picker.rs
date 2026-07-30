@@ -1,4 +1,8 @@
-use std::{io, time::Duration};
+use std::{
+    env, fs, io,
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
 use anyhow::Context;
 use crossterm::{
@@ -30,7 +34,8 @@ struct SessionRow {
     id: String,
     title: String,
     version: u64,
-    messages: usize,
+    shared_messages: usize,
+    native_messages: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,7 +69,7 @@ impl App {
 }
 
 pub(crate) fn pick_session(value: &Value, agent: &str) -> anyhow::Result<PickerResult> {
-    let sessions = parse_sessions(value)?;
+    let sessions = parse_sessions(value, agent)?;
     let selected = usize::from(!sessions.is_empty());
     let mut app = App {
         agent: agent.to_owned(),
@@ -139,7 +144,7 @@ fn run(
 }
 
 fn render(frame: &mut Frame<'_>, app: &App) {
-    let area = centered_rect(82, 82, frame.area());
+    let area = centered_rect(88, 82, frame.area());
     frame.render_widget(
         Block::default()
             .borders(Borders::ALL)
@@ -200,13 +205,13 @@ fn render_sessions(frame: &mut Frame<'_>, app: &App, area: Rect) {
     items.extend(app.sessions.iter().map(|row| {
         ListItem::new(Line::from(vec![
             Span::styled(
-                format!("{:<32}", truncate(&row.title, 32)),
+                format!("{:<30}", truncate(&row.title, 30)),
                 Style::default().add_modifier(Modifier::BOLD),
             ),
             Span::raw(format!(
-                " v{:<3} {:>3} msg  {}",
+                " v{:<3} {:<25} {}",
                 row.version,
-                row.messages,
+                format_message_counts(row),
                 short_id(&row.id)
             )),
         ]))
@@ -244,26 +249,107 @@ fn render_create(frame: &mut Frame<'_>, app: &App, area: Rect) {
     );
 }
 
-fn parse_sessions(value: &Value) -> anyhow::Result<Vec<SessionRow>> {
+fn parse_sessions(value: &Value, agent: &str) -> anyhow::Result<Vec<SessionRow>> {
     let sessions = value.as_array().context("Session list is not an array")?;
     Ok(sessions
         .iter()
         .filter_map(|session| {
+            let id = session.get("id")?.as_str()?.to_owned();
             Some(SessionRow {
-                id: session.get("id")?.as_str()?.to_owned(),
+                native_messages: native_message_count(agent, &id),
+                id,
                 title: session
                     .get("title")
                     .and_then(Value::as_str)
                     .unwrap_or("Untitled Session")
                     .to_owned(),
                 version: session.get("version").and_then(Value::as_u64).unwrap_or(0),
-                messages: session
+                shared_messages: session
                     .get("messages")
                     .and_then(Value::as_array)
                     .map_or(0, Vec::len),
             })
         })
         .collect())
+}
+
+fn native_message_count(agent: &str, session_id: &str) -> Option<usize> {
+    if agent != "claude" {
+        return None;
+    }
+
+    let cwd = fs::canonicalize(env::current_dir().ok()?).ok()?;
+    let state_path = cwd
+        .join(".sessionweft")
+        .join("claude-native-sessions")
+        .join(format!("{session_id}.json"));
+    let state: Value = serde_json::from_slice(&fs::read(state_path).ok()?).ok()?;
+    let native_session_id = state.get("native_session_id")?.as_str()?;
+    count_visible_native_messages(&claude_transcript_path(&cwd, native_session_id))
+}
+
+fn count_visible_native_messages(path: &Path) -> Option<usize> {
+    let content = fs::read_to_string(path).ok()?;
+    Some(
+        content
+            .lines()
+            .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+            .filter(is_visible_native_message)
+            .count(),
+    )
+}
+
+fn is_visible_native_message(value: &&Value) -> bool {
+    matches!(
+        value.get("type").and_then(Value::as_str),
+        Some("user" | "assistant")
+    ) && has_visible_text(value.get("message").and_then(|message| message.get("content")))
+}
+
+fn has_visible_text(content: Option<&Value>) -> bool {
+    match content {
+        Some(Value::String(text)) => !text.trim().is_empty(),
+        Some(Value::Array(blocks)) => blocks.iter().any(|block| {
+            block.get("type").and_then(Value::as_str) == Some("text")
+                && block
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .is_some_and(|text| !text.trim().is_empty())
+        }),
+        _ => false,
+    }
+}
+
+fn claude_transcript_path(cwd: &Path, native_session_id: &str) -> PathBuf {
+    claude_config_root()
+        .join("projects")
+        .join(encode_project_path(cwd))
+        .join(format!("{native_session_id}.jsonl"))
+}
+
+fn claude_config_root() -> PathBuf {
+    if let Some(directory) = env::var_os("CLAUDE_CONFIG_DIR") {
+        return PathBuf::from(directory);
+    }
+    let home = env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    let standard = home.join(".claude");
+    let config = home.join(".config/claude");
+    if standard.exists() || !config.exists() {
+        standard
+    } else {
+        config
+    }
+}
+
+fn encode_project_path(cwd: &Path) -> String {
+    cwd.to_string_lossy().replace(['/', '\\'], "-")
+}
+
+fn format_message_counts(row: &SessionRow) -> String {
+    match row.native_messages {
+        Some(native) => format!("{native:>3} native · {:>3} shared", row.shared_messages),
+        None => format!("{:>3} shared", row.shared_messages),
+    }
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
@@ -298,4 +384,43 @@ fn truncate(value: &str, max: usize) -> String {
         .take(max.saturating_sub(1))
         .collect::<String>()
         + "…"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn visible_user_and_assistant_text_are_counted() {
+        let user = json_value(r#"{"type":"user","message":{"content":"hi"}}"#);
+        let assistant = json_value(
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hi."}]}}"#,
+        );
+        assert!(is_visible_native_message(&&user));
+        assert!(is_visible_native_message(&&assistant));
+    }
+
+    #[test]
+    fn tool_result_only_records_are_not_counted_as_chat_messages() {
+        let tool_result = json_value(
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}"#,
+        );
+        assert!(!is_visible_native_message(&&tool_result));
+    }
+
+    #[test]
+    fn native_and_shared_counts_are_labeled_separately() {
+        let row = SessionRow {
+            id: "session".to_owned(),
+            title: "Title".to_owned(),
+            version: 0,
+            shared_messages: 0,
+            native_messages: Some(2),
+        };
+        assert_eq!(format_message_counts(&row), "  2 native ·   0 shared");
+    }
+
+    fn json_value(source: &str) -> Value {
+        serde_json::from_str(source).expect("valid test JSON")
+    }
 }
