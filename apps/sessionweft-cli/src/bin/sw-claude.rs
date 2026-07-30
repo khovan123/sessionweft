@@ -1,11 +1,9 @@
-#[path = "support/codex_native_binding.rs"]
-mod codex_native_binding;
-#[path = "support/codex_session_picker.rs"]
-mod codex_session_picker;
 #[path = "support/sessionweft_claude_launcher_impl.rs"]
 mod launcher;
 #[path = "support/sessionweft_handoff.rs"]
 mod sessionweft_handoff;
+#[path = "support/shared_session_picker.rs"]
+mod shared_session_picker;
 
 fn main() -> anyhow::Result<()> {
     launcher::run()
