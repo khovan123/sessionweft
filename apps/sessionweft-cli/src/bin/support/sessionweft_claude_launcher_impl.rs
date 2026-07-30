@@ -211,9 +211,11 @@ fn load_codex_binding(cwd: &Path, session_id: &str) -> anyhow::Result<Option<Cod
                     .and_then(Value::as_str)
                     == Some(session_id);
                 let is_codex = binding.get("agent").and_then(Value::as_str) == Some("codex");
-                (matches_session && is_codex).then(|| CodexBinding {
-                    native_session_id: binding.get("native_session_id")?.as_str()?.to_owned(),
-                })
+                if !matches_session || !is_codex {
+                    return None;
+                }
+                let native_session_id = binding.get("native_session_id")?.as_str()?.to_owned();
+                Some(CodexBinding { native_session_id })
             })
         }))
 }
