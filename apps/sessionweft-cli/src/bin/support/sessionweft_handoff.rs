@@ -40,7 +40,9 @@ pub(crate) fn write_codex_handoff(
         rollout_path.display()
     );
     if messages.is_empty() {
-        content.push_str("\n_No visible user or assistant messages were found in the recent rollout tail._\n");
+        content.push_str(
+            "\n_No visible user or assistant messages were found in the recent rollout tail._\n",
+        );
     } else {
         for message in messages {
             content.push_str(&format!("\n### {}\n\n{}\n", message.role, message.text));
@@ -62,8 +64,8 @@ pub(crate) fn load_codex_handoff(cwd: &Path, session_id: &str) -> anyhow::Result
 }
 
 fn extract_visible_messages(path: &Path) -> anyhow::Result<Vec<VisibleMessage>> {
-    let mut file = fs::File::open(path)
-        .with_context(|| format!("open Codex rollout {}", path.display()))?;
+    let mut file =
+        fs::File::open(path).with_context(|| format!("open Codex rollout {}", path.display()))?;
     let length = file.metadata()?.len();
     let start = length.saturating_sub(MAX_ROLLOUT_TAIL_BYTES);
     file.seek(SeekFrom::Start(start))?;
@@ -87,7 +89,9 @@ fn extract_visible_messages(path: &Path) -> anyhow::Result<Vec<VisibleMessage>> 
                 }
             }
             Some("response_item") => {
-                if let Some(message) = parse_response_message(value.get("payload").unwrap_or(&value)) {
+                if let Some(message) =
+                    parse_response_message(value.get("payload").unwrap_or(&value))
+                {
                     push_unique(&mut response_messages, message);
                 }
             }
