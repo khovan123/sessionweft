@@ -28,6 +28,10 @@ name = "sw-codex"
 path = "src/bin/sw-codex.rs"
 
 [[bin]]
+name = "sw-claude"
+path = "src/bin/sw-claude.rs"
+
+[[bin]]
 name = "sw-fcc-claude"
 path = "src/bin/sw-fcc-claude.rs"
 
