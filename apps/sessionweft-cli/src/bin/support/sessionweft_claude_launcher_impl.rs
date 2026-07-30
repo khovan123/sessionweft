@@ -187,12 +187,9 @@ fn refresh_codex_handoff(cwd: &Path, session_id: &str) {
         );
         return;
     };
-    if let Err(error) = write_codex_handoff(
-        cwd,
-        session_id,
-        &binding.native_session_id,
-        &rollout_path,
-    ) {
+    if let Err(error) =
+        write_codex_handoff(cwd, session_id, &binding.native_session_id, &rollout_path)
+    {
         eprintln!("warning: failed to refresh Codex handoff: {error}");
     }
 }
@@ -215,10 +212,7 @@ fn load_codex_binding(cwd: &Path, session_id: &str) -> anyhow::Result<Option<Cod
                     == Some(session_id);
                 let is_codex = binding.get("agent").and_then(Value::as_str) == Some("codex");
                 (matches_session && is_codex).then(|| CodexBinding {
-                    native_session_id: binding
-                        .get("native_session_id")?
-                        .as_str()?
-                        .to_owned(),
+                    native_session_id: binding.get("native_session_id")?.as_str()?.to_owned(),
                 })
             })
         }))
@@ -300,9 +294,7 @@ fn launch_claude(
     args: &[OsString],
 ) -> anyhow::Result<ExitStatus> {
     let mut command = Command::new("claude");
-    command
-        .arg("--append-system-prompt-file")
-        .arg(context_path);
+    command.arg("--append-system-prompt-file").arg(context_path);
     if resume {
         command.arg("--resume").arg(session_id);
     } else {
