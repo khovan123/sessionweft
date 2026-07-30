@@ -61,9 +61,10 @@ impl BindingStore {
     }
 
     pub(crate) fn get(&self, session_id: &str) -> Option<&NativeBinding> {
-        self.file.bindings.iter().find(|binding| {
-            binding.sessionweft_session_id == session_id && binding.agent == AGENT
-        })
+        self.file
+            .bindings
+            .iter()
+            .find(|binding| binding.sessionweft_session_id == session_id && binding.agent == AGENT)
     }
 
     pub(crate) fn upsert(&mut self, binding: NativeBinding) -> anyhow::Result<()> {
@@ -206,7 +207,9 @@ fn uuid_from_filename(path: &Path) -> Option<String> {
     }
     (0..=name.len() - 36).find_map(|start| {
         let candidate = name.get(start..start + 36)?;
-        Uuid::parse_str(candidate).ok().map(|_| candidate.to_owned())
+        Uuid::parse_str(candidate)
+            .ok()
+            .map(|_| candidate.to_owned())
     })
 }
 
@@ -216,9 +219,8 @@ mod tests {
 
     #[test]
     fn filename_uuid_is_detected() {
-        let path = Path::new(
-            "rollout-2026-07-30T08-00-00-019fb216-bc5b-7fc1-b0f6-badcb1cba63e.jsonl",
-        );
+        let path =
+            Path::new("rollout-2026-07-30T08-00-00-019fb216-bc5b-7fc1-b0f6-badcb1cba63e.jsonl");
         assert_eq!(
             uuid_from_filename(path).as_deref(),
             Some("019fb216-bc5b-7fc1-b0f6-badcb1cba63e")
