@@ -113,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let cwd = fs::canonicalize(&cli.cwd)
         .with_context(|| format!("resolve wrapper working directory {}", cli.cwd.display()))?;
-    let runtime = RuntimeClient::new(cli.endpoint, cli.token);
+    let runtime = RuntimeClient::new(cli.endpoint.clone(), cli.token.clone());
     let mut bindings = BindingStore::load(&cwd)?;
 
     let session = select_session(&runtime, &bindings, &cli).await?;
