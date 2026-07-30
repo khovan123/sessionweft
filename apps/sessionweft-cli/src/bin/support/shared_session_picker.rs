@@ -299,7 +299,7 @@ fn count_visible_native_messages(path: &Path) -> Option<usize> {
     )
 }
 
-fn is_visible_native_message(value: &&Value) -> bool {
+fn is_visible_native_message(value: &Value) -> bool {
     matches!(
         value.get("type").and_then(Value::as_str),
         Some("user" | "assistant")
@@ -396,8 +396,8 @@ mod tests {
         let assistant = json_value(
             r#"{"type":"assistant","message":{"content":[{"type":"text","text":"Hi."}]}}"#,
         );
-        assert!(is_visible_native_message(&&user));
-        assert!(is_visible_native_message(&&assistant));
+        assert!(is_visible_native_message(&user));
+        assert!(is_visible_native_message(&assistant));
     }
 
     #[test]
@@ -405,7 +405,7 @@ mod tests {
         let tool_result = json_value(
             r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}"#,
         );
-        assert!(!is_visible_native_message(&&tool_result));
+        assert!(!is_visible_native_message(&tool_result));
     }
 
     #[test]
