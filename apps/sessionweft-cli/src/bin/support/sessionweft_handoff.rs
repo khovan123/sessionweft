@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::Context;
+use anyhow::{Context, ensure};
 use serde_json::Value;
 
 const MAX_ROLLOUT_TAIL_BYTES: u64 = 8 * 1024 * 1024;
@@ -50,6 +50,11 @@ pub(crate) fn write_codex_handoff(
     }
 
     fs::write(&path, content)?;
+    ensure!(
+        load_codex_handoff(cwd, session_id)?.is_some(),
+        "Codex handoff was not persisted at {}",
+        path.display()
+    );
     Ok(path)
 }
 
