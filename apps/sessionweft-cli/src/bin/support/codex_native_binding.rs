@@ -3,85 +3,94 @@ use std::{
     env, fs,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
-    time::SystemTime,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, bail};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use uuid::Uuid;
 
 pub(crate) const AGENT: &str = "codex";
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NativeBinding {
     pub(crate) sessionweft_session_id: String,
     pub(crate) agent: String,
     pub(crate) native_session_id: String,
-    pub(crate) last_started_at: String,
-    pub(crate) last_ended_at: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct BindingFile {
-    #[serde(default = "binding_schema_version")]
-    schema_version: u32,
-    #[serde(default)]
-    bindings: Vec<NativeBinding>,
-}
-
-impl Default for BindingFile {
-    fn default() -> Self {
-        Self {
-            schema_version: binding_schema_version(),
-            bindings: Vec::new(),
-        }
-    }
-}
-
-const fn binding_schema_version() -> u32 {
-    1
+    pub(crate) last_started_at: u64,
+    pub(crate) last_ended_at: u64,
 }
 
 pub(crate) struct BindingStore {
     path: PathBuf,
-    file: BindingFile,
+    bindings: Vec<NativeBinding>,
 }
 
 impl BindingStore {
     pub(crate) fn load(cwd: &Path) -> anyhow::Result<Self> {
         let path = cwd.join(".sessionweft/native-session-bindings.json");
-        let file = if path.is_file() {
-            serde_json::from_slice(&fs::read(&path)?)
-                .with_context(|| format!("decode {}", path.display()))?
+        let bindings = if path.is_file() {
+            let value: Value = serde_json::from_slice(&fs::read(&path)?)
+                .with_context(|| format!("decode {}", path.display()))?;
+            value
+                .get("bindings")
+                .and_then(Value::as_array)
+                .map(|items| items.iter().filter_map(parse_binding).collect())
+                .unwrap_or_default()
         } else {
-            BindingFile::default()
+            Vec::new()
         };
-        Ok(Self { path, file })
+        Ok(Self { path, bindings })
     }
 
     pub(crate) fn get(&self, session_id: &str) -> Option<&NativeBinding> {
-        self.file
-            .bindings
-            .iter()
-            .find(|binding| binding.sessionweft_session_id == session_id && binding.agent == AGENT)
+        self.bindings.iter().find(|binding| {
+            binding.sessionweft_session_id == session_id && binding.agent == AGENT
+        })
     }
 
     pub(crate) fn upsert(&mut self, binding: NativeBinding) -> anyhow::Result<()> {
-        if let Some(existing) = self.file.bindings.iter_mut().find(|existing| {
+        if let Some(existing) = self.bindings.iter_mut().find(|existing| {
             existing.sessionweft_session_id == binding.sessionweft_session_id
                 && existing.agent == binding.agent
         }) {
             *existing = binding;
         } else {
-            self.file.bindings.push(binding);
+            self.bindings.push(binding);
         }
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(&self.path, serde_json::to_vec_pretty(&self.file)?)?;
+        let bindings = self.bindings.iter().map(binding_json).collect::<Vec<_>>();
+        fs::write(
+            &self.path,
+            serde_json::to_vec_pretty(&json!({
+                "schema_version": 1,
+                "bindings": bindings,
+            }))?,
+        )?;
         Ok(())
     }
+}
+
+fn parse_binding(value: &Value) -> Option<NativeBinding> {
+    Some(NativeBinding {
+        sessionweft_session_id: value.get("sessionweft_session_id")?.as_str()?.to_owned(),
+        agent: value.get("agent")?.as_str()?.to_owned(),
+        native_session_id: value.get("native_session_id")?.as_str()?.to_owned(),
+        last_started_at: value.get("last_started_at")?.as_u64()?,
+        last_ended_at: value.get("last_ended_at")?.as_u64()?,
+    })
+}
+
+fn binding_json(binding: &NativeBinding) -> Value {
+    json!({
+        "sessionweft_session_id": binding.sessionweft_session_id,
+        "agent": binding.agent,
+        "native_session_id": binding.native_session_id,
+        "last_started_at": binding.last_started_at,
+        "last_ended_at": binding.last_ended_at,
+    })
 }
 
 #[derive(Debug)]
@@ -89,6 +98,43 @@ pub(crate) struct CodexSessionRecord {
     pub(crate) id: String,
     pub(crate) path: PathBuf,
     modified: SystemTime,
+}
+
+pub(crate) fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
+pub(crate) fn format_unix_utc(seconds: u64) -> String {
+    let days = (seconds / 86_400) as i64;
+    let seconds_of_day = seconds % 86_400;
+    let hour = seconds_of_day / 3_600;
+    let minute = (seconds_of_day % 3_600) / 60;
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02} UTC")
+}
+
+fn civil_from_days(days_since_epoch: i64) -> (i64, i64, i64) {
+    let shifted = days_since_epoch + 719_468;
+    let era = if shifted >= 0 {
+        shifted
+    } else {
+        shifted - 146_096
+    } / 146_097;
+    let day_of_era = shifted - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096)
+            / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    if month <= 2 {
+        year += 1;
+    }
+    (year, month, day)
 }
 
 pub(crate) fn snapshot(cwd: &Path) -> HashMap<PathBuf, SystemTime> {
@@ -225,5 +271,11 @@ mod tests {
             uuid_from_filename(path).as_deref(),
             Some("019fb216-bc5b-7fc1-b0f6-badcb1cba63e")
         );
+    }
+
+    #[test]
+    fn unix_time_formats_as_utc_date() {
+        assert_eq!(format_unix_utc(0), "1970-01-01 00:00 UTC");
+        assert_eq!(format_unix_utc(1_722_470_400), "2024-08-01 00:00 UTC");
     }
 }
