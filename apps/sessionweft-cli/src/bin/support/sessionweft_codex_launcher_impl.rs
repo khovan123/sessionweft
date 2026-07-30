@@ -16,6 +16,7 @@ use crate::{
         snapshot, validate_uuid,
     },
     codex_session_picker::{PickerResult, pick_session},
+    sessionweft_handoff::write_codex_handoff,
 };
 
 #[derive(Debug, Parser)]
@@ -151,10 +152,15 @@ async fn main() -> anyhow::Result<()> {
         .and_then(|binding| find_by_id(&cwd, &binding.native_session_id))
         .or_else(|| discover_new(&cwd, &before));
     if let Some(record) = record {
+        let native_session_id = record.id.clone();
+        match write_codex_handoff(&cwd, &session_id, &native_session_id, &record.path) {
+            Ok(path) => println!("SessionWeft handoff updated: {}", path.display()),
+            Err(error) => eprintln!("warning: failed to materialize Codex handoff: {error}"),
+        }
         bindings.upsert(NativeBinding {
-            sessionweft_session_id: session_id,
+            sessionweft_session_id: session_id.clone(),
             agent: AGENT.to_owned(),
-            native_session_id: record.id,
+            native_session_id,
             last_started_at: started_at,
             last_ended_at: ended_at,
         })?;
