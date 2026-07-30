@@ -227,10 +227,7 @@ fn materialize_context(
         .get("title")
         .and_then(Value::as_str)
         .unwrap_or("Untitled Session");
-    let version = session
-        .get("version")
-        .and_then(Value::as_u64)
-        .unwrap_or(0);
+    let version = session.get("version").and_then(Value::as_u64).unwrap_or(0);
     let native_id = binding
         .map(|binding| binding.native_session_id.as_str())
         .unwrap_or("not-yet-bound");
@@ -270,10 +267,7 @@ fn print_session(session: &Value, binding: Option<&NativeBinding>) {
     );
     println!(
         "  shared version: {}",
-        session
-            .get("version")
-            .and_then(Value::as_u64)
-            .unwrap_or(0)
+        session.get("version").and_then(Value::as_u64).unwrap_or(0)
     );
     println!("  agent:          {AGENT}");
     println!(
