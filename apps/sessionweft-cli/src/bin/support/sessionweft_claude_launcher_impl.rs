@@ -1,8 +1,10 @@
 use std::{
+    env,
     ffi::OsString,
     fs,
     path::{Path, PathBuf},
     process::{Command, ExitStatus, Stdio},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, bail};
@@ -11,9 +13,8 @@ use reqwest::Client;
 use serde_json::{Value, json};
 
 use crate::{
-    codex_native_binding::{BindingStore, find_by_id, format_unix_utc, now_unix},
-    codex_session_picker::{PickerResult, pick_session},
     sessionweft_handoff::{load_codex_handoff, write_codex_handoff},
+    shared_session_picker::{PickerResult, pick_session},
 };
 
 const AGENT: &str = "claude";
@@ -107,6 +108,11 @@ struct ClaudeState {
     last_ended_at: u64,
 }
 
+#[derive(Debug)]
+struct CodexBinding {
+    native_session_id: String,
+}
+
 pub(super) fn run() -> anyhow::Result<()> {
     main()
 }
@@ -117,11 +123,10 @@ async fn main() -> anyhow::Result<()> {
     let cwd = fs::canonicalize(&cli.cwd)
         .with_context(|| format!("resolve wrapper working directory {}", cli.cwd.display()))?;
     let runtime = RuntimeClient::new(cli.endpoint.clone(), cli.token.clone());
-    let bindings = BindingStore::load(&cwd)?;
 
-    let session = select_session(&runtime, &bindings, &cli).await?;
+    let session = select_session(&runtime, &cli).await?;
     let session_id = required_string(&session, "id")?;
-    refresh_codex_handoff(&cwd, &session_id, &bindings);
+    refresh_codex_handoff(&cwd, &session_id);
     let context_path = materialize_context(&cwd, &session)?;
     let state_path = claude_state_path(&cwd, &session_id);
     let previous_state = load_claude_state(&state_path)?;
@@ -150,11 +155,7 @@ async fn main() -> anyhow::Result<()> {
     ensure_success(status)
 }
 
-async fn select_session(
-    runtime: &RuntimeClient,
-    bindings: &BindingStore,
-    cli: &Cli,
-) -> anyhow::Result<Value> {
+async fn select_session(runtime: &RuntimeClient, cli: &Cli) -> anyhow::Result<Value> {
     if let Some(session_id) = cli.session.as_deref() {
         return runtime.get(&format!("/v1/sessions/{session_id}")).await;
     }
@@ -163,26 +164,91 @@ async fn select_session(
     }
 
     let sessions = runtime.get("/v1/sessions?limit=100").await?;
-    match pick_session(&sessions, bindings)? {
+    match pick_session(&sessions, AGENT)? {
         PickerResult::Create(title) => runtime.create_session(&title).await,
         PickerResult::Resume(id) => runtime.get(&format!("/v1/sessions/{id}")).await,
         PickerResult::Quit => bail!("session selection cancelled"),
     }
 }
 
-fn refresh_codex_handoff(cwd: &Path, session_id: &str, bindings: &BindingStore) {
-    let Some(binding) = bindings.get(session_id) else {
-        return;
+fn refresh_codex_handoff(cwd: &Path, session_id: &str) {
+    let binding = match load_codex_binding(cwd, session_id) {
+        Ok(Some(binding)) => binding,
+        Ok(None) => return,
+        Err(error) => {
+            eprintln!("warning: failed to read Codex binding: {error}");
+            return;
+        }
     };
-    let Some(record) = find_by_id(cwd, &binding.native_session_id) else {
+    let Some(rollout_path) = find_codex_rollout(&binding.native_session_id) else {
         eprintln!(
             "warning: native Codex rollout {} was not found; Claude will use shared SessionWeft history only",
             binding.native_session_id
         );
         return;
     };
-    if let Err(error) = write_codex_handoff(cwd, session_id, &record.id, &record.path) {
+    if let Err(error) = write_codex_handoff(
+        cwd,
+        session_id,
+        &binding.native_session_id,
+        &rollout_path,
+    ) {
         eprintln!("warning: failed to refresh Codex handoff: {error}");
+    }
+}
+
+fn load_codex_binding(cwd: &Path, session_id: &str) -> anyhow::Result<Option<CodexBinding>> {
+    let path = cwd.join(".sessionweft/native-session-bindings.json");
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let value: Value = serde_json::from_slice(&fs::read(&path)?)
+        .with_context(|| format!("decode Codex bindings {}", path.display()))?;
+    Ok(value
+        .get("bindings")
+        .and_then(Value::as_array)
+        .and_then(|bindings| {
+            bindings.iter().find_map(|binding| {
+                let matches_session = binding
+                    .get("sessionweft_session_id")
+                    .and_then(Value::as_str)
+                    == Some(session_id);
+                let is_codex = binding.get("agent").and_then(Value::as_str) == Some("codex");
+                (matches_session && is_codex).then(|| CodexBinding {
+                    native_session_id: binding
+                        .get("native_session_id")?
+                        .as_str()?
+                        .to_owned(),
+                })
+            })
+        }))
+}
+
+fn find_codex_rollout(native_session_id: &str) -> Option<PathBuf> {
+    let root = env::var_os("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".codex")))?
+        .join("sessions");
+    let mut files = Vec::new();
+    collect_jsonl_files(&root, &mut files);
+    files.into_iter().find(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.contains(native_session_id))
+    })
+}
+
+fn collect_jsonl_files(directory: &Path, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_jsonl_files(&path, files);
+        } else if path.extension().and_then(|value| value.to_str()) == Some("jsonl") {
+            files.push(path);
+        }
     }
 }
 
@@ -234,15 +300,15 @@ fn launch_claude(
     args: &[OsString],
 ) -> anyhow::Result<ExitStatus> {
     let mut command = Command::new("claude");
+    command
+        .arg("--append-system-prompt-file")
+        .arg(context_path);
     if resume {
         command.arg("--resume").arg(session_id);
     } else {
         command.arg("--session-id").arg(session_id);
     }
-    command
-        .arg("--append-system-prompt-file")
-        .arg(context_path)
-        .args(args);
+    command.args(args);
     if !resume && args.is_empty() {
         command.arg(
             "Continue from the SessionWeft cross-agent handoff. Briefly summarize the previous Codex work and current state, then wait for my next instruction.",
@@ -348,12 +414,48 @@ fn print_session(session: &Value, state: &ClaudeState) {
     );
 }
 
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs())
+}
+
 fn format_optional_time(value: u64) -> String {
     if value == 0 {
         "-".to_owned()
     } else {
         format_unix_utc(value)
     }
+}
+
+fn format_unix_utc(seconds: u64) -> String {
+    let days = (seconds / 86_400) as i64;
+    let seconds_of_day = seconds % 86_400;
+    let hour = seconds_of_day / 3_600;
+    let minute = (seconds_of_day % 3_600) / 60;
+    let (year, month, day) = civil_from_days(days);
+    format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02} UTC")
+}
+
+fn civil_from_days(days_since_epoch: i64) -> (i64, i64, i64) {
+    let shifted = days_since_epoch + 719_468;
+    let era = if shifted >= 0 {
+        shifted
+    } else {
+        shifted - 146_096
+    } / 146_097;
+    let day_of_era = shifted - era * 146_097;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let mut year = year_of_era + era * 400;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_prime = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_prime + 2) / 5 + 1;
+    let month = month_prime + if month_prime < 10 { 3 } else { -9 };
+    if month <= 2 {
+        year += 1;
+    }
+    (year, month, day)
 }
 
 fn required_string(value: &Value, field: &str) -> anyhow::Result<String> {
@@ -378,5 +480,11 @@ mod tests {
     #[test]
     fn zero_time_is_not_rendered_as_epoch() {
         assert_eq!(format_optional_time(0), "-");
+    }
+
+    #[test]
+    fn unix_time_formats_as_utc_date() {
+        assert_eq!(format_unix_utc(0), "1970-01-01 00:00 UTC");
+        assert_eq!(format_unix_utc(1_722_470_400), "2024-08-01 00:00 UTC");
     }
 }
