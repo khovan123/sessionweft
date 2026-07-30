@@ -303,7 +303,11 @@ fn is_visible_native_message(value: &Value) -> bool {
     matches!(
         value.get("type").and_then(Value::as_str),
         Some("user" | "assistant")
-    ) && has_visible_text(value.get("message").and_then(|message| message.get("content")))
+    ) && has_visible_text(
+        value
+            .get("message")
+            .and_then(|message| message.get("content")),
+    )
 }
 
 fn has_visible_text(content: Option<&Value>) -> bool {
